@@ -12,11 +12,16 @@ import com.still.music.data.Playlist
 import com.still.music.playback.*
 import com.still.music.provider.Track
 import com.still.music.provider.YouTubeProvider
+import com.still.music.provider.PlaylistImporter
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 data class LyricsState(val trackId: String = "", val loading: Boolean = false,
     val value: com.still.music.lyrics.Lyrics? = null, val error: String? = null)
+
+data class PlaylistImportState(val running: Boolean = false, val total: Int = 0,
+    val processed: Int = 0, val imported: Int = 0, val playlistId: Long? = null,
+    val error: String? = null)
 
 data class SearchState(val query: String = "", val tracks: List<Track> = emptyList(), val loading: Boolean = false,
     val error: String? = null, val more: Boolean = false)
@@ -27,6 +32,9 @@ data class PlaybackState(val queue: List<Track> = emptyList(), val index: Int = 
 }
 class StillViewModel(app: Application) : AndroidViewModel(app) {
     private val graph = (app as StillApp).graph
+    private val _playlistImport = MutableStateFlow(PlaylistImportState())
+    val playlistImport = _playlistImport.asStateFlow()
+    private var importJob: Job? = null
     private val radioPreferences = app.getSharedPreferences("auto_radio", android.content.Context.MODE_PRIVATE)
     private val _autoPlayRadio = MutableStateFlow(radioPreferences.getBoolean("enabled", true))
     val autoPlayRadio = _autoPlayRadio.asStateFlow()
@@ -215,6 +223,45 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun selectPlaylist(id: Long?) { selectedPlaylist.value = id }
+    fun importPlaylist(name: String, rawInput: String) {
+        if (_playlistImport.value.running) return
+        if (name.isBlank() || rawInput.isBlank()) {
+            message.value = "Enter a playlist name and paste a URL or song list."
+            return
+        }
+        _playlistImport.value = PlaylistImportState(running = true)
+        importJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val importer = PlaylistImporter(graph.music)
+                val entries = importer.read(rawInput)
+                require(entries.isNotEmpty()) { "No songs were found in this input." }
+                val id = graph.library.create(name)
+                _playlistImport.update { it.copy(total = entries.size, playlistId = id) }
+                val importedIds = hashSetOf<String>()
+                entries.forEachIndexed { index, entry ->
+                    ensureActive()
+                    val track = importer.match(entry)
+                    if (track != null && track.id !in importedIds) {
+                        graph.library.add(id, track)
+                        importedIds.add(track.id)
+                    }
+                    _playlistImport.update { it.copy(processed = index + 1, imported = importedIds.size) }
+                    if (index < entries.lastIndex) delay(500)
+                }
+                val state = _playlistImport.value
+                message.value = "Imported ${state.imported} of ${state.total}. ${state.total - state.imported} unmatched, failed, or duplicate songs skipped."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                val error = e.message ?: "Import failed. Already imported songs are saved."
+                _playlistImport.update { it.copy(error = error) }
+                message.value = error
+            } finally { _playlistImport.update { it.copy(running = false) } }
+        }
+    }
+    fun cancelPlaylistImport() {
+        importJob?.cancel()
+        message.value = "Import stopped. Already imported songs are saved."
+    }
     fun createPlaylist(name: String, track: Track? = null) = library {
         val id = graph.library.create(name)
         if (track != null) {

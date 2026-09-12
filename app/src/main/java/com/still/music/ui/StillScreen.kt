@@ -65,6 +65,10 @@ import kotlin.random.Random
     val preload by vm.preload.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val mixLoading by vm.mixLoading.collectAsStateWithLifecycle()
+    val importState by vm.playlistImport.collectAsStateWithLifecycle()
+    var importing by rememberSaveable { mutableStateOf(false) }
+    var importName by rememberSaveable { mutableStateOf("") }
+    var importInput by rememberSaveable { mutableStateOf("") }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var libraryTab by rememberSaveable { mutableIntStateOf(0) }
     var nowPlaying by rememberSaveable { mutableStateOf(false) }
@@ -145,6 +149,9 @@ import kotlin.random.Random
                     }
                 }
             } else {
+                TextButton(onClick = { importing = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (importState.running) "Imported ${importState.imported} of ${importState.total}" else "Import Playlist")
+                }
                 FilledTonalButton(onClick = vm::playSmartMix, enabled = !mixLoading && player.connected,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
                     if (mixLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -229,6 +236,24 @@ import kotlin.random.Random
             }
         }
     }
+    if (importing) AlertDialog(onDismissRequest = { importing = false }, title = { Text("Import Playlist") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (importState.running) {
+                Text(if (importState.total == 0) "Reading playlist..." else "Imported ${importState.imported} of ${importState.total}")
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text("Checked ${importState.processed} songs. Unmatched and duplicate songs are skipped.")
+            } else {
+                OutlinedTextField(importName, { importName = it.take(100) }, label = { Text("Playlist name") }, singleLine = true)
+                OutlinedTextField(importInput, { importInput = it }, label = { Text("YouTube URL or song list / CSV") },
+                    placeholder = { Text("Song Title - Artist, one song per line") }, minLines = 4, maxLines = 8)
+                if (importState.total > 0) Text("Imported ${importState.imported} of ${importState.total}")
+                importState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        } }, confirmButton = {
+            if (importState.running) TextButton(onClick = vm::cancelPlaylistImport) { Text("Stop import") }
+            else TextButton(enabled = importName.isNotBlank() && importInput.isNotBlank(),
+                onClick = { vm.importPlaylist(importName, importInput) }) { Text("Import") }
+        }, dismissButton = { TextButton(onClick = { importing = false }) { Text("Close") } })
     if (settings) AlertDialog(onDismissRequest = { settings = false }, title = { Text("Preferences") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
