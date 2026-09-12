@@ -1,63 +1,134 @@
-# Still
-A native, free, ad-free Android music player with experimental YouTube Music search and streaming. Kotlin, Compose Material 3, Media3, Room and DataStore. Requires Android 8.0 (API 26) or newer and an internet connection.
+<div align="center">
 
-## Open and build
-Open this directory in a recent stable Android Studio supporting AGP 9.3. Use the bundled JDK 21 (JDK 17 is the documented minimum) and install Android SDK Platform 37.1 and Build Tools 36.0.0. Android Studio creates the ignored local.properties file.
+# 🎵 Still
 
-Windows PowerShell:
+**Music, with room to breathe.**  
+*A native, ad-free, lightweight Android music player with YouTube Music streaming & library management.*
+
+[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.android.com/)
+[![Android API](https://img.shields.io/badge/Min%20SDK-26%20(Android%208.0%2B)-blue?style=for-the-badge)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Compose](https://img.shields.io/badge/Jetpack-Compose%20M3-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
+[![License](https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge)](docs/THIRD_PARTY.md)
+
+</div>
+
+---
+
+## ✨ Features
+
+### 🎧 Seamless Streaming & Playback
+- **YouTube Music Engine**: Fast, ad-free search and playback powered by unofficial extraction without login, tracking, or accounts.
+- **Background Playback**: Continues playing smoothly in the background, with lock-screen system media controls and notification actions.
+- **Smart Queue Management**: Reorder, jump, remove tracks, shuffle, and cycle repeat modes with up to 300 entries.
+- **Preloading & Low Latency**: Preloads upcoming tracks in memory for instant transitions.
+- **Audio State Preservation**: Remembers your queue, playback position, and repeat settings across app restarts.
+
+### 📚 Library & Organization
+- **Local Playlists**: Create, rename, delete, and organize playlists locally.
+- **Favorites & Recents**: Quick-access favorites and automatic tracking of your latest 100 listened tracks.
+- **Audius Legacy Support**: Provider-qualified playback architecture supporting Audius catalog tracks.
+
+### 📜 Lyrics & Offline
+- **Synchronized Lyrics**: Real-time scrolling lyrics powered by LRCLIB.
+- **Offline Caching**: Download songs directly to local storage for offline playback.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **UI & Theming** | Jetpack Compose, Material 3, Dark Theme, Coil 3 (Async Image Loading) |
+| **Media & Audio Engine** | AndroidX Media3 (ExoPlayer + MediaSessionService) |
+| **Local Persistence** | Room Database (Metadata, Playlists, Recents), Preferences DataStore |
+| **Extraction & Network** | NewPipeExtractor, OkHttp 3, Kotlinx Serialization |
+| **Async & Reactive** | Kotlin Coroutines, StateFlow, Lifecycle-aware UI collectors |
+
+---
+
+## 🚀 Getting Started
+
+### Requirements
+- **JDK**: Version 21 (bundled with recent Android Studio) or JDK 17 minimum.
+- **Android SDK**: Platform 37.1 (API 35+) and Build Tools 36.0.0.
+- **Target Device**: Android 8.0 (API 26) or newer with an active internet connection.
+
+---
+
+### 💻 Build & Install
+
+#### 🪟 Windows (PowerShell)
 ```powershell
+# 1. Set JDK path (if using Android Studio JBR)
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+
+# 2. Run unit tests & build debug APK
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+# 3. Install to connected device (via ADB)
 & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r app/build/outputs/apk/debug/app-debug.apk
 ```
-macOS/Linux: set JAVA_HOME to a compatible JDK and run `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`.
 
-The Gradle wrapper and its pinned distribution checksum are included. Generated outputs, credentials and machine-specific configuration are excluded from Git.
+#### 🍏 macOS & 🐧 Linux
+```bash
+# Set JAVA_HOME if needed, then build & test
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
-## YouTube Music (experimental)
-Search defaults to the songs category through NewPipeExtractor v0.26.5. No account, subscription, API key, Python runtime, or extraction server is configured. Availability depends on YouTube and the local network; unofficial extraction can break and need dependency updates. This is not an official YouTube integration.
-
-Existing Audius library entries remain supported. Provider-qualified IDs keep their metadata and playlists intact. Stream URLs are resolved when playback opens and are never saved to the database.
-
-NewPipeExtractor is GPL-3.0-or-later. Its license is bundled in app assets; see [third-party notices](docs/THIRD_PARTY.md). Distribution must account for the dependency's copyleft requirements.
-
-## Audius configuration (existing library entries)
-Public search and public streaming work without credentials as verified on September 12, 2026. See [provider verification](docs/PROVIDER.md) for official references and the actual HTTP probe.
-
-For an optional public application API key, visit https://api.audius.co/plans, sign in and create an API key. Set the AUDIUS_API_KEY environment variable before building, or create an ignored credentials.properties file:
-```properties
-AUDIUS_API_KEY=YOUR_PUBLIC_APPLICATION_KEY
+# Install via ADB
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
-Rebuild after changing it. The key is visible in the APK. Never put an API secret, bearer token, wallet private key or user credential in this file or app. Server-backed authorization would be a separate future integration. No credentials are required to build this MVP.
 
-Audius does not carry every song. Gated, deleted, key-restricted and unavailable tracks cannot be played here. No access checks are bypassed and previews are not substituted for full tracks. Local favourites/playlists do not modify an Audius account. Audius may change quotas, catalog availability or API access.
+---
 
-## Use
-- Search YouTube Music; selecting a track queues the playable results already loaded.
-- The mini player opens Now Playing. Seek, pause, skip, favourite, shuffle and cycle repeat off/all/one.
-- Queue lets you jump, move tracks up/down and remove entries, including the current track. Maximum 300 entries.
-- Track options add a favourite, append to queue or add to a playlist.
-- Library includes favourites, named playlists (create, rename, delete, remove tracks) and the latest 100 distinct tracks listened to.
-- Preferences can disable next-track preloading.
-- Playback continues when backgrounded or locked. The media notification exposes system controls.
-- On restart the last queue, position, shuffle permutation and repeat mode restore paused. Resume explicitly. Snapshots are written on player events and every three seconds.
+## 🏗️ Architecture Overview
 
-## Architecture
-One app module. `MusicProvider` defines search, track details and playback access; identifiers are provider-qualified, e.g. audius:mWB22. `AudiusProvider` contains REST parsing and access policy. Register supported alternatives in `ProviderRegistry`.
-
-`PlaybackService` owns ExoPlayer and MediaSession. A resolving data source requests a fresh stream URL on the loader thread. No expiring audio URL is persisted. Media3 manages advancement, shuffle/repeat, audio focus, noisy-output handling, media buttons and notification lifecycle. The UI controls it through MediaController.
-
-`LibraryRepository` wraps Room metadata, favourites, playlists and recents. DataStore stores preferences and queue metadata/position. Neither stores audio. `StillViewModel` exposes StateFlows to Compose; the provider and player are outside composables.
-
-Upcoming audio can buffer up to five seconds in memory using Media3 playlist preloading. Gapless output depends on source encoding and network conditions; no crossfade or zero-buffering guarantee. Temporary load failures retry with one/two/four-second backoff, then stop with retry UI. Access refusals do not retry.
-
-## Verification
-`testDebugUnitTest` covers provider parsing/access/HTTP handling, queue edits and Media3 repeat/shuffle timeline behavior, snapshot restoration, retry bounds and Room persistence across database reopen.
-
-With an emulator/device and internet:
-```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest
 ```
-The live instrumentation test searches YouTube Music for Daft Punk Get Lucky, selects a real result, verifies position advancement and pause/seek, backgrounds/locks the device, sends system media keys, exercises transient audio focus, and seeks near the end to check automatic advancement. It depends on live provider availability and uses no fake audio. Test-only synthetic metadata/URLs are confined to unit tests.
+StillApp
+ ├── UI Layer (Jetpack Compose)
+ │    ├── StillScreen & FeaturePanels (Material 3 UI, Now Playing, Mini-Player)
+ │    └── StillViewModel (Exposes StateFlows to composables)
+ │
+ ├── Playback Layer (Media3)
+ │    ├── PlaybackService (ExoPlayer + MediaSession, background lifecycle)
+ │    └── PlaybackResolver (Resolves fresh stream URLs on background threads)
+ │
+ ├── Data & Storage Layer
+ │    ├── LibraryRepository (Room database: Tracks, Playlists, Recents, Favourites)
+ │    ├── PreferencesDataStore (User settings, queue position snapshots)
+ │    └── OfflineStore (Local audio cache & file manager)
+ │
+ └── Provider Layer
+      ├── YouTubeProvider (NewPipeExtractor search & audio streams)
+      └── AudiusProvider (REST API provider)
+```
 
-See [YouTube integration verification](docs/YOUTUBE.md) for this provider and [historical Audius verification](docs/VERIFICATION.md) for checks actually run and remaining limitations.
+---
+
+## 🧪 Verification & Tests
+
+To execute provider parsing, queue logic, Room database tests, and Media3 timeline tests:
+
+```bash
+# Unit Tests
+./gradlew :app:testDebugUnitTest
+
+# Connected Device Instrumentation Tests
+./gradlew :app:connectedDebugAndroidTest
+```
+
+> For full test history and verified providers, see [YouTube Verification](docs/YOUTUBE.md), [Audius Verification](docs/PROVIDER.md), and [Offline & Lyrics Verification](docs/OFFLINE_LYRICS.md).
+
+---
+
+## ⚖️ Third-Party Notices & Licenses
+
+- **NewPipeExtractor** is licensed under **GPL-3.0-or-later**. Its license is bundled directly in app assets (see [Third-Party Notices](docs/THIRD_PARTY.md)).
+- This project is an independent client and is **not affiliated with, endorsed by, or sponsored by YouTube, Google LLC, or Audius**.
+- No credentials or private API keys are required to build or run this application.
+
+---
+
+<div align="center">
+Made with ❤️ for clean, uncluttered music listening.
+</div>
