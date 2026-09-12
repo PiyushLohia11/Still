@@ -63,4 +63,58 @@ class PlaylistImporterTest {
             runBlocking { PlaylistImporter(provider).match(PlaylistImporter.Entry("One")) }
         }
     }
+
+    private val spotifyHtml = """<html><script type="application/json" id="__NEXT_DATA__">
+        {"props":{"pageProps":{"state":{"data":{"entity":{"trackList":[
+          {"uri":"spotify:track:one","title":"One","subtitle":"U2","isPlayable":false},
+          {"uri":"spotify:episode:two","title":"Podcast","subtitle":"Host"},
+          {"uri":"spotify:track:three","title":"Hello, Goodbye","subtitle":"The Beatles"}
+        ]}}}}}}</script></html>"""
+
+    @Test fun parsesSpotifyMetadataWithoutRequiringSpotifyPlayback() {
+        assertEquals(listOf(PlaylistImporter.Entry("One", "U2"),
+            PlaylistImporter.Entry("Hello, Goodbye", "The Beatles")),
+            PlaylistImporter(Provider()).parseSpotifyPage(spotifyHtml))
+    }
+
+    @Test fun validatesSpotifyPlaylistLinks() {
+        val importer = PlaylistImporter(Provider())
+        val id = "3cEYpjA9oz9GiPac4AsH4n"
+        for (path in listOf("playlist", "intl-en/playlist", "embed/playlist")) {
+            assertEquals(id, importer.spotifyPlaylistId("https://open.spotify.com/$path/$id?si=example"))
+        }
+        for (link in listOf("https://open.spotify.com/track/$id", "https://example.com/playlist/$id")) {
+            assertThrows(IllegalArgumentException::class.java) { importer.spotifyPlaylistId(link) }
+        }
+    }
+
+    @Test fun readsSpotifySharedLinkAndReportsPreviewLimitation() = runBlocking {
+        val requests = mutableListOf<String>()
+        val http = okhttp3.OkHttpClient.Builder().followRedirects(false).addInterceptor { chain ->
+            val request = chain.request()
+            requests.add(request.url.toString())
+            okhttp3.Response.Builder().request(request).protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(if (request.url.host == "spotify.link") 302 else 200).message("test")
+                .header("Location", "https://open.spotify.com/playlist/3cEYpjA9oz9GiPac4AsH4n?si=test")
+                .body(okhttp3.ResponseBody.create(null, spotifyHtml)).build()
+        }.build()
+        val importer = PlaylistImporter(Provider(), http)
+        assertEquals(2, importer.read("https://spotify.link/example").size)
+        assertTrue(requests.last().startsWith("https://open.spotify.com/embed/playlist/"))
+        assertNotNull(importer.notice)
+    }
+
+    @Test fun unavailableSpotifyPageHasHelpfulError() {
+        val error = assertThrows(ProviderException::class.java) {
+            PlaylistImporter(Provider()).parseSpotifyPage(
+                """<script id="__NEXT_DATA__">{"props":{"pageProps":{"status":500}}}</script>""")
+        }
+        assertTrue(error.message!!.contains("unavailable"))
+    }
+
+    @Test fun youtubeEntriesKeepOriginalTrackAndDoNotSearchAgain() = runBlocking {
+        val provider = Provider().apply { failure = IllegalStateException("Search must not run") }
+        val track = Track("youtube:abcdefghijk", "One", "Music uploader")
+        assertEquals(track, PlaylistImporter(provider).match(PlaylistImporter.Entry(track.title, track.artist, track)))
+    }
 }

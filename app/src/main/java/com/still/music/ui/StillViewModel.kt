@@ -21,7 +21,7 @@ data class LyricsState(val trackId: String = "", val loading: Boolean = false,
 
 data class PlaylistImportState(val running: Boolean = false, val total: Int = 0,
     val processed: Int = 0, val imported: Int = 0, val playlistId: Long? = null,
-    val error: String? = null)
+    val error: String? = null, val notice: String? = null)
 
 data class SearchState(val query: String = "", val tracks: List<Track> = emptyList(), val loading: Boolean = false,
     val error: String? = null, val more: Boolean = false)
@@ -236,7 +236,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
                 val entries = importer.read(rawInput)
                 require(entries.isNotEmpty()) { "No songs were found in this input." }
                 val id = graph.library.create(name)
-                _playlistImport.update { it.copy(total = entries.size, playlistId = id) }
+                _playlistImport.update { it.copy(total = entries.size, playlistId = id, notice = importer.notice) }
                 val importedIds = hashSetOf<String>()
                 entries.forEachIndexed { index, entry ->
                     ensureActive()
@@ -246,7 +246,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
                         importedIds.add(track.id)
                     }
                     _playlistImport.update { it.copy(processed = index + 1, imported = importedIds.size) }
-                    if (index < entries.lastIndex) delay(500)
+                    if (entry.sourceTrack == null && index < entries.lastIndex) delay(500)
                 }
                 val state = _playlistImport.value
                 message.value = "Imported ${state.imported} of ${state.total}. ${state.total - state.imported} unmatched, failed, or duplicate songs skipped."

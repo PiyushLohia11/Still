@@ -3,13 +3,17 @@ package com.still.music.ui
 
 import android.media.AudioManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -19,6 +23,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -31,6 +37,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -47,11 +54,15 @@ import kotlin.random.Random
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Color(0xFFA4B8A5), onPrimary = Color(0xFF152019),
         primaryContainer = Color(0xFF303D33), onPrimaryContainer = Color(0xFFD7E5D7),
-        background = Color(0xFF151718), onBackground = Color(0xFFF0EEE8),
-        surface = Color(0xFF151718), onSurface = Color(0xFFF0EEE8),
-        surfaceVariant = Color(0xFF242728), onSurfaceVariant = Color(0xFFB8BCB6),
+        background = Color(0xFF121314), onBackground = Color(0xFFF5F5F5),
+        surface = Color(0xFF121314), onSurface = Color(0xFFF5F5F5),
+        surfaceVariant = Color(0xFF1E2022), onSurfaceVariant = Color(0xFFC2C5C8),
+        surfaceContainer = Color(0xFF1E2022), surfaceContainerHigh = Color(0xFF252729),
+        surfaceContainerHighest = Color(0xFF2B2D30), outlineVariant = Color(0xFF36393C),
         secondaryContainer = Color(0xFF303D33), onSecondaryContainer = Color(0xFFD7E5D7),
-        outline = Color(0xFF727971)), content = content)
+        outline = Color(0xFF727971)), shapes = Shapes(
+            medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(20.dp),
+            extraLarge = RoundedCornerShape(20.dp)), content = content)
 }
 @Composable fun StillScreen(vm: StillViewModel) {
     val search by vm.search.collectAsStateWithLifecycle()
@@ -98,18 +109,23 @@ import kotlin.random.Random
         bottomBar = {
             Column {
                 player.current?.let { current ->
-                    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 12.dp).clip(RoundedCornerShape(16.dp))) {
+                    Surface(color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(28.dp), shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Open Now Playing") { nowPlaying = true }.padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Artwork(current, Modifier.size(48.dp))
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.SemiBold, modifier = Modifier.basicMarquee())
                                 Text(current.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (player.buffering) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            Action(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                if (player.playing) "Pause" else "Play", enabled = player.connected, onClick = vm::toggle)
+                            else VisualizerBars(player.playing && player.connected && player.error == null,
+                                Modifier.size(width = 20.dp, height = 20.dp), barCount = 4)
+                            PlaybackButton(player.playing, player.connected, onClick = vm::toggle)
                             Action(Icons.Default.SkipNext, "Next track", onClick = vm::next)
                         }
                     }
@@ -128,7 +144,7 @@ import kotlin.random.Random
                     label = { Text("Search music") }, placeholder = { Text("Tracks or artists") },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     trailingIcon = { if (search.query.isNotEmpty()) Action(Icons.Default.Close, "Clear search", onClick = { vm.query("") }) },
-                    singleLine = true, shape = RoundedCornerShape(16.dp))
+                    singleLine = true, shape = RoundedCornerShape(20.dp))
                 Text("YouTube Music · experimental", modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -160,8 +176,9 @@ import kotlin.random.Random
                         Modifier.padding(start = 8.dp))
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Favourites", "Playlists", "Recently played", "Downloads").forEachIndexed { index, label ->
-                        FilterChip(selected = libraryTab == index, onClick = { libraryTab = index; playlistId = null }, label = { Text(label) })
+                    listOf(2 to "Tracks", 1 to "Playlists", 0 to "Favorites", 3 to "Downloads").forEach { (index, label) ->
+                        FilterChip(selected = libraryTab == index, onClick = { libraryTab = index; playlistId = null },
+                            shape = CircleShape, label = { Text(label, Modifier.padding(horizontal = 6.dp)) })
                     }
                 }
                 val selected = playlists.firstOrNull { it.id == playlistId }
@@ -180,7 +197,8 @@ import kotlin.random.Random
                                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; rename = list; naming = true })
                                         DropdownMenuItem(text = { Text("Delete playlist") }, onClick = { menu = false; delete = list })
                                     }
-                                } }, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { playlistId = list.id })
+                                } }, colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { playlistId = list.id })
                         }
                     }
                 } else {
@@ -205,9 +223,9 @@ import kotlin.random.Random
             }
         }
     }
-    if (nowPlaying && player.current != null) FullScreenSheet("Now playing", { nowPlaying = false }) {
+    FullScreenSheet("Now playing", { nowPlaying = false }, visible = nowPlaying && player.current != null, showHeader = false) {
         NowPlaying(player, favourites.any { it.id == player.current?.id }, vm,
-            onQueue = { queue = true }, onPlaylist = {
+            onClose = { nowPlaying = false }, onQueue = { queue = true }, onPlaylist = {
                 addTrack = player.current
                 nowPlaying = false
             })
@@ -244,11 +262,12 @@ import kotlin.random.Random
                 Text("Checked ${importState.processed} songs. Unmatched and duplicate songs are skipped.")
             } else {
                 OutlinedTextField(importName, { importName = it.take(100) }, label = { Text("Playlist name") }, singleLine = true)
-                OutlinedTextField(importInput, { importInput = it }, label = { Text("YouTube URL or song list / CSV") },
-                    placeholder = { Text("Song Title - Artist, one song per line") }, minLines = 4, maxLines = 8)
+                OutlinedTextField(importInput, { importInput = it }, label = { Text("Spotify or YouTube playlist link") },
+                    placeholder = { Text("Paste a public playlist link, or a text/CSV song list") }, minLines = 4, maxLines = 8)
                 if (importState.total > 0) Text("Imported ${importState.imported} of ${importState.total}")
                 importState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
+            importState.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         } }, confirmButton = {
             if (importState.running) TextButton(onClick = vm::cancelPlaylistImport) { Text("Stop import") }
             else TextButton(enabled = importName.isNotBlank() && importInput.isNotBlank(),
@@ -294,51 +313,78 @@ import kotlin.random.Random
     }
 }
 @Composable private fun NowPlaying(state: PlaybackState, favourite: Boolean, vm: StillViewModel,
-    onQueue: () -> Unit, onPlaylist: () -> Unit) {
+    onQueue: () -> Unit, onPlaylist: () -> Unit, onClose: () -> Unit) {
     val track = state.current ?: return
     var menu by remember(track.id) { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 12.dp),
+    var volumeOpen by rememberSaveable { mutableStateOf(false) }
+    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val artSize = minOf(maxWidth - 64.dp, 360.dp, maxHeight * 0.46f)
+    val breathingRoom = (maxHeight - artSize - 350.dp).coerceAtLeast(24.dp)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Artwork(track, Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f))
-        Spacer(Modifier.height(28.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            AnimatedVisualizerBar(
-                isPlaying = state.playing && state.connected && !state.buffering && state.error == null,
-                modifier = Modifier.size(48.dp).padding(horizontal = 8.dp, vertical = 10.dp))
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
-                Text(track.artist, style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                Text(if (track.id.startsWith("youtube:")) "YouTube Music" else "Audius",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 6.dp))
-            }
+        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Action(Icons.Default.KeyboardArrowDown, "Close Now playing", onClick = onClose)
+            Spacer(Modifier.weight(1f))
+            Action(Icons.AutoMirrored.Filled.VolumeUp, "Music volume", onClick = { volumeOpen = !volumeOpen })
+            AnimatedVisualizerBar(state.playing && state.connected && !state.buffering && state.error == null,
+                Modifier.size(40.dp).padding(10.dp))
             Box {
                 Action(Icons.Default.MoreVert, "Options for ${track.title}", onClick = { menu = true })
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Add to playlist") }, onClick = {
-                        menu = false
-                        onPlaylist()
-                    })
+                    DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
+                    DropdownMenuItem(text = { Text("Download") }, onClick = { menu = false; vm.download(track) })
+                    DropdownMenuItem(text = { Text("Lyrics") }, onClick = { menu = false; lyricsOpen = !lyricsOpen })
                 }
             }
         }
-        Spacer(Modifier.height(20.dp))
+        AnimatedVisibility(volumeOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            MusicVolumeControl(onError = { vm.message.value = it })
+        }
+        Artwork(track, Modifier.size(artSize).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp)
+        Spacer(Modifier.height(24.dp))
+        Text(track.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(track.artist, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp))
+        Spacer(Modifier.height(breathingRoom))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Action(Icons.AutoMirrored.Filled.QueueMusic, "Queue", onClick = onQueue)
+            Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                if (favourite) "Remove from favourites" else "Add to favourites",
+                tint = if (favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                onClick = { vm.favourite(track) })
+            Action(Icons.Default.Add, "Add to playlist", onClick = onPlaylist)
+        }
+        Spacer(Modifier.height(8.dp))
         var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
-        Slider(value = dragging ?: state.position.toFloat().coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
+        val smoothPosition by animateFloatAsState(state.position.toFloat(),
+            animationSpec = tween(if (state.playing && dragging == null) 450 else 0, easing = LinearEasing),
+            label = "Playback position")
+        Slider(value = dragging ?: smoothPosition.coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
             onValueChange = { dragging = it }, onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
             valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(), enabled = state.duration > 0,
+            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White,
+                inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
+            thumb = { Box(Modifier.size(16.dp).background(Color.White, CircleShape)) },
+            track = { slider ->
+                SliderDefaults.Track(sliderState = slider, modifier = Modifier.height(3.dp),
+                    colors = SliderDefaults.colors(activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
+                    thumbTrackGapSize = 0.dp, drawStopIndicator = null)
+            },
             modifier = Modifier.semantics { contentDescription = "Playback position" })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(duration((dragging?.toLong() ?: state.position)), style = MaterialTheme.typography.labelMedium)
-            Text(duration(state.duration), style = MaterialTheme.typography.labelMedium)
+            Crossfade(duration(dragging?.toLong() ?: state.position), animationSpec = tween(120), label = "Elapsed time") {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(duration(state.duration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             Action(Icons.Default.Shuffle, if (state.shuffle) "Turn shuffle off" else "Turn shuffle on", tint = if (state.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = vm::shuffle)
             Action(Icons.Default.SkipPrevious, "Previous track", onClick = vm::previous)
-            FilledIconButton(onClick = vm::toggle, enabled = state.connected, modifier = Modifier.size(68.dp)) {
-                Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(32.dp))
-            }
+            PlaybackButton(state.playing, state.connected, size = 64.dp, prominent = false, onClick = vm::toggle)
             Action(Icons.Default.SkipNext, "Next track", onClick = vm::next)
             Action(if (state.repeat == 1) Icons.Default.RepeatOne else Icons.Default.Repeat,
                 "Repeat ${when (state.repeat) { 1 -> "one"; 2 -> "all"; else -> "off" }}. Change repeat mode",
@@ -346,21 +392,18 @@ import kotlin.random.Random
         }
         if (state.buffering) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Connecting to music…", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall) }
         state.error?.let { ErrorState(it, vm::toggle) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                if (favourite) "Remove from favourites" else "Add to favourites",
-                tint = if (favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = { vm.favourite(track) })
-            TextButton(onClick = onQueue) { Icon(Icons.AutoMirrored.Filled.QueueMusic, null); Text("Queue", Modifier.padding(start = 8.dp)) }
-        }
-        MusicVolumeControl(onError = { vm.message.value = it })
-        DownloadButton(track, vm)
-        LyricsPanel(track, state.position, vm)
-        Spacer(Modifier.height(24.dp))
+        AnimatedVisibility(lyricsOpen) { LyricsPanel(track, state.position, vm) }
+        Spacer(Modifier.height(16.dp))
+    }
     }
 }
 @Composable fun AnimatedVisualizerBar(isPlaying: Boolean, modifier: Modifier = Modifier) {
-    val rhythms = remember {
-        List(5) { Random.nextInt(350, 850) to Random.nextDouble(0.55, 1.0).toFloat() }
+    VisualizerBars(isPlaying, modifier, barCount = 5)
+}
+
+@Composable private fun VisualizerBars(isPlaying: Boolean, modifier: Modifier, barCount: Int) {
+    val rhythms = remember(barCount) {
+        List(barCount) { Random.nextInt(350, 850) to Random.nextDouble(0.55, 1.0).toFloat() }
     }
     val transition = rememberInfiniteTransition(label = "Visualizer rhythm")
     val levels = rhythms.mapIndexed { index, (duration, peak) ->
@@ -379,7 +422,7 @@ import kotlin.random.Random
         label = "Visualizer activity")
     val color = MaterialTheme.colorScheme.primary
     Canvas(modifier.size(width = 32.dp, height = 28.dp).clearAndSetSemantics { }) {
-        val barWidth = size.width / 9f
+        val barWidth = size.width / (barCount * 2 - 1)
         val baseline = minOf(4.dp.toPx(), size.height)
         val amount = activity.value
         levels.forEachIndexed { index, level ->
@@ -440,7 +483,7 @@ import kotlin.random.Random
     }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Action(if (volume == 0) Icons.Default.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+        Action(if (volume == 0) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
             if (volume == 0) "Unmute music" else "Mute music", enabled = enabled) {
             if (volume > 0) {
                 lastAudible = volume
@@ -459,24 +502,37 @@ import kotlin.random.Random
             modifier = Modifier.widthIn(min = 48.dp).padding(start = 8.dp))
     }
 }
-@Composable private fun FullScreenSheet(title: String, dismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+@Composable private fun FullScreenSheet(title: String, dismiss: () -> Unit, visible: Boolean = true, showHeader: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit) {
+    val visibility = remember { MutableTransitionState(false) }
+    LaunchedEffect(visible) { visibility.targetState = visible }
+    if (!visibility.currentState && !visibility.targetState && visibility.isIdle) return
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        AnimatedVisibility(visibleState = visibility,
+            enter = slideInVertically(tween(360, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(220)),
+            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(220))) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(Modifier.safeDrawingPadding().imePadding()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                if (showHeader) listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background)
+                else listOf(Color(0xFF070807), Color(0xFF100D09), Color(0xFF352016), Color(0xFF392021))))
+                .safeDrawingPadding().imePadding()) {
+                if (showHeader) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Action(Icons.Default.KeyboardArrowDown, "Close $title", onClick = dismiss)
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp))
                 }
                 content()
             }
         }
+        }
     }
 }
 @Composable private fun TrackRow(track: Track, favourite: Boolean, current: Boolean, onPlay: () -> Unit,
     onFavourite: () -> Unit, onQueue: () -> Unit, onPlaylist: () -> Unit, onRemove: (() -> Unit)? = null, onDownload: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Play ${track.title}", role = Role.Button, onClick = onPlay)
-        .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+        .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+        .clickable(onClickLabel = "Play ${track.title}", role = Role.Button, onClick = onPlay)
+        .padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Artwork(track, Modifier.size(56.dp))
         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
             Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
@@ -497,12 +553,30 @@ import kotlin.random.Random
         }
     }
 }
-@Composable private fun Artwork(track: Track, modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+@Composable private fun Artwork(track: Track, modifier: Modifier, cornerRadius: Dp = 20.dp) {
+    Box(modifier.clip(RoundedCornerShape(cornerRadius)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         Icon(Icons.Default.MusicNote, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
         AsyncImage(model = track.artwork, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
 }
+@Composable private fun PlaybackButton(playing: Boolean, enabled: Boolean, size: Dp = 48.dp,
+    prominent: Boolean = true, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.9f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "Playback press")
+    FilledIconButton(onClick = onClick, enabled = enabled, shape = CircleShape,
+        colors = if (prominent) IconButtonDefaults.filledIconButtonColors() else
+            IconButtonDefaults.filledIconButtonColors(containerColor = Color.Transparent, contentColor = Color.White),
+        interactionSource = interaction, modifier = Modifier.size(size).scale(scale)
+            .semantics { contentDescription = if (playing) "Pause" else "Play" }) {
+        Crossfade(playing, animationSpec = tween(160), label = "Playback icon") { active ->
+            Icon(if (active) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = null, modifier = Modifier.size(size * 0.45f))
+        }
+    }
+}
+
 @Composable private fun Action(icon: ImageVector, description: String, enabled: Boolean = true,
     tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {

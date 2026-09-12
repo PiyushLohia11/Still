@@ -1,6 +1,9 @@
 package com.still.music.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material3.*
@@ -35,8 +38,10 @@ import com.still.music.provider.Track
         }
         if (entries.isEmpty()) item { Text("Choose Download from a song's options or Now Playing.") }
         items(entries, key = { it.track.id }) { entry ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(entry.track.title, style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.fillMaxWidth().clickable(enabled = entry.ready, role = Role.Button,
                             onClickLabel = "Play downloaded song") { vm.play(entry.track, playable) }.padding(vertical = 8.dp))
@@ -57,7 +62,7 @@ import com.still.music.provider.Track
         }
     }
     removing?.let { entry ->
-        AlertDialog(onDismissRequest = { removing = null }, title = { Text("Remove download?") },
+        AlertDialog(onDismissRequest = { removing = null }, shape = RoundedCornerShape(20.dp), title = { Text("Remove download?") },
             text = { Text("Remove the saved audio for ${entry.track.title}? Your playlists and favourites stay.") },
             confirmButton = { TextButton(onClick = { vm.removeDownload(entry.track.id); removing = null }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } })
@@ -68,7 +73,9 @@ import com.still.music.provider.Track
     val state by vm.lyrics.collectAsStateWithLifecycle()
     LaunchedEffect(track.id) { vm.loadLyrics(track) }
     val lyrics = state.takeIf { it.trackId == track.id }
-    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+    Surface(Modifier.fillMaxWidth().padding(top = 16.dp), shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 2.dp) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Lyrics", style = MaterialTheme.typography.titleLarge)
         Text("LRCLIB", style = MaterialTheme.typography.labelSmall)
         when {
@@ -89,8 +96,11 @@ import com.still.music.provider.Track
                 LaunchedEffect(active, track.id) { if (active >= 0) listState.animateScrollToItem((active - 1).coerceAtLeast(0)) }
                 LazyColumn(Modifier.fillMaxWidth().height(300.dp), state = listState) {
                     itemsIndexed(lines) { index, line ->
+                        val lyricColor by animateColorAsState(
+                            if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            animationSpec = tween(250), label = "Active lyric")
                         Text(line.text.ifBlank { "..." }, style = MaterialTheme.typography.titleMedium,
-                            color = if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = lyricColor,
                             modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Seek to lyric") {
                                 vm.seek(line.timeMs)
                             }.padding(vertical = 10.dp))
@@ -99,5 +109,6 @@ import com.still.music.provider.Track
             }
             else -> Text(lyrics.value.plain, Modifier.padding(vertical = 12.dp))
         }
+    }
     }
 }

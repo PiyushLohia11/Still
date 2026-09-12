@@ -5,23 +5,39 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import kotlinx.serialization.json.*
+import java.util.concurrent.TimeUnit
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import java.util.Locale
 import kotlin.coroutines.coroutineContext
 
-class PlaylistImporter(private val youtube: MusicProvider) {
-    data class Entry(val title: String, val artist: String = "")
+class PlaylistImporter(private val youtube: MusicProvider,
+    private val http: OkHttpClient = OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(false).followSslRedirects(false).build()) {
+    data class Entry(val title: String, val artist: String = "", val sourceTrack: Track? = null)
+    var notice: String? = null
+        private set
 
     suspend fun read(rawInput: String): List<Entry> = withContext(Dispatchers.IO) {
         val input = rawInput.trim().removePrefix("\uFEFF")
-        require(input.isNotBlank()) { "Paste a YouTube playlist URL or song list." }
+        notice = null
+        require(input.isNotBlank()) { "Paste a Spotify or YouTube playlist link." }
         if (input.startsWith("https://") || input.startsWith("http://")) {
             val url = input.toHttpUrlOrNull()
-                ?: throw IllegalArgumentException("Enter a valid YouTube playlist URL.")
+                ?: throw IllegalArgumentException("Enter a valid Spotify or YouTube playlist link.")
+            if (url.host in setOf("open.spotify.com", "www.open.spotify.com", "spotify.link", "spotify.app.link")) {
+                val resolved = if (url.host.endsWith(".link")) resolveSpotifyLink(url.toString()) else url.toString()
+                val id = spotifyPlaylistId(resolved)
+                val entries = parseSpotifyPage(fetchSpotify("https://open.spotify.com/embed/playlist/$id?utm_source=generator"))
+                notice = "Spotify imports the songs exposed by its public preview; large playlists may be incomplete."
+                return@withContext entries
+            }
             require(url.host in setOf("youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com", "youtu.be")) {
-                "Paste a YouTube playlist URL, or export other playlists as text or CSV."
+                "Paste a Spotify or YouTube playlist link, or a text/CSV song list."
             }
             val id = url.queryParameter("list")
             require(id != null && id.matches(Regex("[A-Za-z0-9_-]+"))) { "The URL must contain a YouTube playlist ID." }
@@ -37,11 +53,77 @@ class PlaylistImporter(private val youtube: MusicProvider) {
                 next = page.nextPage
             }
             items.filter { it.name.isNotBlank() && it.name !in listOf("[Deleted video]", "[Private video]") }
-                .map { Entry(it.name, it.uploaderName.orEmpty().removeSuffix(" - Topic")) }
+                .mapNotNull { item ->
+                    val videoId = try { service.streamLHFactory.getId(item.url) }
+                        catch (_: Exception) { return@mapNotNull null }
+                    val track = Track("youtube:$videoId", item.name, item.uploaderName.orEmpty(),
+                        item.thumbnails.firstOrNull()?.url, (item.duration * 1000).coerceAtLeast(0))
+                    Entry(track.title, track.artist, track)
+                }
         } else parseText(input)
     }
 
+    internal fun spotifyPlaylistId(link: String): String {
+        val url = link.toHttpUrlOrNull()
+        require(url != null && url.host in setOf("open.spotify.com", "www.open.spotify.com")) {
+            "This Spotify link did not resolve to a playlist."
+        }
+        val segments = url.pathSegments.filter(String::isNotBlank)
+            .dropWhile { it == "embed" || it.startsWith("intl-") }
+        require(segments.size == 2 && segments[0] == "playlist" && segments[1].matches(Regex("[A-Za-z0-9]{22}"))) {
+            "Use a Spotify playlist link, not a song, album, or artist link."
+        }
+        return segments[1]
+    }
+
+    private fun request(url: String) = Request.Builder().url(url)
+        .header("User-Agent", com.still.music.playback.PlaybackResolver.USER_AGENT).build()
+
+    private fun resolveSpotifyLink(link: String): String {
+        var url = link.toHttpUrlOrNull() ?: throw IllegalArgumentException("Invalid Spotify link.")
+        repeat(5) {
+            require(url.isHttps && url.host in setOf("spotify.link", "spotify.app.link", "open.spotify.com", "www.open.spotify.com")) {
+                "Unsupported Spotify link redirect. Use the full open.spotify.com playlist link."
+            }
+            if (url.host == "open.spotify.com" || url.host == "www.open.spotify.com") return url.toString()
+            http.newCall(request(url.toString())).execute().use { response ->
+                require(response.code in 300..399) { "Could not expand Spotify link. Paste the full playlist link." }
+                url = response.header("Location")?.let(url::resolve)
+                    ?: throw IllegalArgumentException("Spotify link has no playlist destination.")
+            }
+        }
+        throw IllegalArgumentException("Too many Spotify redirects. Paste the full playlist link.")
+    }
+
+    private fun fetchSpotify(url: String): String = http.newCall(request(url)).execute().use { response ->
+        if (!response.isSuccessful) throw ProviderException(
+            if (response.code == 429) "Spotify is rate-limiting requests. Try again later."
+            else "Spotify playlist is unavailable. Check that it is public and the link is correct.", response.code)
+        response.body.string()
+    }
+
+    internal fun parseSpotifyPage(html: String): List<Entry> {
+        val script = Regex("""<script\b[^>]*\bid\s*=\s*["']__NEXT_DATA__["'][^>]*>(.*?)</script>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)).find(html)?.groupValues?.get(1)
+            ?: throw ProviderException("Spotify did not expose this playlist. Check that it is public, or try later.")
+        val root = Json.parseToJsonElement(script).jsonObject
+        val props = root["props"]?.jsonObject?.get("pageProps")?.jsonObject
+        val entity = props?.get("state")?.jsonObject?.get("data")?.jsonObject?.get("entity")?.jsonObject
+        val tracks = entity?.get("trackList") as? JsonArray
+            ?: throw ProviderException("Spotify playlist is private, unavailable, or could not be read. Try another public playlist.")
+        return tracks.mapNotNull { value ->
+            val track = value as? JsonObject ?: return@mapNotNull null
+            val uri = track["uri"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            if (!uri.startsWith("spotify:track:")) return@mapNotNull null
+            val title = track["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val artist = track["subtitle"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            if (title.isBlank()) null else Entry(title, artist)
+        }
+    }
+
     suspend fun match(entry: Entry): Track? {
+        coroutineContext.ensureActive()
+        entry.sourceTrack?.let { return it.takeIf(Track::playable) }
         return try {
             val titleWords = words(entry.title)
             if (titleWords.isEmpty()) return null
