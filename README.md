@@ -54,11 +54,3 @@ With an emulator/device and internet:
 The live instrumentation test searches Audius, selects a real result, verifies position advancement and pause/seek, backgrounds/locks the device, sends system media keys, exercises transient audio focus, and seeks near the end to check automatic advancement. It depends on live provider availability and uses no fake audio. Test-only synthetic metadata/URLs are confined to unit tests.
 
 See [verification report](docs/VERIFICATION.md) for checks actually run and remaining limitations.
-
-## GitHub
-Feature milestones are committed locally. To authenticate and create the requested private repository when no remote exists:
-```powershell
-gh auth login
-gh repo create still --private --source=. --remote=origin --push
-```
-If origin already exists: `git push -u origin main`. Do not upload credentials or generated APKs through Git; share the local APK separately.
