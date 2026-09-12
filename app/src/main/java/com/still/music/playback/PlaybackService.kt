@@ -20,6 +20,7 @@ import com.still.music.provider.ProviderException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import java.io.IOException
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -44,24 +45,29 @@ class PlaybackService : MediaSessionService() {
     private var restored = false
     private val saves = Channel<QueueSnapshot>(Channel.CONFLATED)
     private var lastRecorded: String? = null
+    private var audioStarted = false
 
     override fun onCreate() {
         super.onCreate()
-        val http = DefaultHttpDataSource.Factory().setUserAgent("Still/0.1 (Audius)")
+        val http = DefaultHttpDataSource.Factory().setUserAgent(PlaybackResolver.USER_AGENT)
             .setConnectTimeoutMs(15000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(false)
-        val resolving = ResolvingDataSource.Factory(http) { spec ->
-            if (spec.uri.scheme != "still") throw IOException("Unsupported media source")
-            val id = spec.uri.lastPathSegment ?: throw IOException("Missing track identifier")
-            // Media3 calls its data source on a loader thread. No provider code runs on the UI thread.
-            val access = runBlocking { graph.providers.forTrack(id).resolvePlayback(id) }
-            spec.withUri(android.net.Uri.parse(access.url))
-        }
+        val resolving = graph.resolver.dataSourceFactory(DefaultDataSource.Factory(this, http))
         player = ExoPlayer.Builder(this)
+            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                .setBufferDurationsMs(30_000, 90_000, 2_500, 5_000)
+                .setPrioritizeTimeOverSizeThresholds(true).build())
             .setMediaSourceFactory(DefaultMediaSourceFactory(resolving).setLoadErrorHandlingPolicy(StreamingRetryPolicy()))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+        graph.playbackHealth.value = com.still.music.PlaybackHealth()
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onAudioUnderrun(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
+                graph.playbackHealth.update { it.copy(audioUnderruns = it.audioUnderruns + 1) }
+            }
+        })
         val intent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, player).setSessionActivity(intent)
@@ -83,6 +89,15 @@ class PlaybackService : MediaSessionService() {
             }).build()
 
         player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) audioStarted = true }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_BUFFERING && audioStarted)
+                    graph.playbackHealth.update { it.copy(bufferWaits = it.bufferWaits + 1) }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                val id = player.currentMediaItem?.mediaId ?: return
+                scope.launch { graph.resolver.invalidate(id) }
+            }
             override fun onEvents(player: Player, events: Player.Events) {
                 if (!restored) return
                 snapshot()
@@ -100,7 +115,7 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
             }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { lastRecorded = null }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { lastRecorded = null; audioStarted = false }
         })
         scope.launch {
             for (saved in saves) {

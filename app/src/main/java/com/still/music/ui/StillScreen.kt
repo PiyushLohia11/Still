@@ -1,7 +1,9 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.still.music.ui
 
+import android.media.AudioManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,19 +19,29 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.still.music.data.Playlist
 import com.still.music.provider.Track
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlin.math.roundToInt
+import kotlin.random.Random
 
 @Composable fun StillTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(
@@ -48,8 +60,11 @@ import com.still.music.provider.Track
     val recents by vm.recents.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
     val playlistTracks by vm.playlistTracks.collectAsStateWithLifecycle()
+    val playbackHealth by vm.playbackHealth.collectAsStateWithLifecycle()
+    val downloads by vm.downloads.collectAsStateWithLifecycle()
     val preload by vm.preload.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val mixLoading by vm.mixLoading.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var libraryTab by rememberSaveable { mutableIntStateOf(0) }
     var nowPlaying by rememberSaveable { mutableStateOf(false) }
@@ -106,22 +121,22 @@ import com.still.music.provider.Track
             if (tab == 0) {
                 OutlinedTextField(value = search.query, onValueChange = vm::query,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                    label = { Text("Search Audius") }, placeholder = { Text("Tracks or artists") },
+                    label = { Text("Search music") }, placeholder = { Text("Tracks or artists") },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     trailingIcon = { if (search.query.isNotEmpty()) Action(Icons.Default.Close, "Clear search", onClick = { vm.query("") }) },
                     singleLine = true, shape = RoundedCornerShape(16.dp))
-                Text("Music from Audius · availability varies", modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                Text("YouTube Music · experimental", modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                    if (search.query.isBlank()) item { EmptyState("Find your next favourite", "Search Audius’s independent catalog by track or artist.", Icons.Default.Search) }
+                    if (search.query.isBlank()) item { EmptyState("Find your next favourite", "Search songs by title or artist.", Icons.Default.Search) }
                     if (search.loading && search.tracks.isEmpty()) item { Loading() }
                     search.error?.let { error -> item { ErrorState(error, vm::retrySearch) } }
                     if (!search.loading && search.query.isNotBlank() && search.tracks.isEmpty() && search.error == null)
-                        item { EmptyState("No tracks found", "Try another title or artist. Audius does not have every song.", Icons.Default.MusicNote) }
+                        item { EmptyState("No tracks found", "Try another song title or artist.", Icons.Default.MusicNote) }
                     items(search.tracks, key = Track::id) { track ->
                         TrackRow(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
                             onPlay = { vm.play(track, search.tracks) }, onFavourite = { vm.favourite(track) },
-                            onQueue = { vm.enqueue(track) }, onPlaylist = { addTrack = track })
+                            onQueue = { vm.enqueue(track) }, onPlaylist = { addTrack = track }, onDownload = { vm.download(track) })
                     }
                     if (search.more) item {
                         TextButton(onClick = vm::more, enabled = !search.loading, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
@@ -130,13 +145,22 @@ import com.still.music.provider.Track
                     }
                 }
             } else {
+                FilledTonalButton(onClick = vm::playSmartMix, enabled = !mixLoading && player.connected,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    if (mixLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.AutoAwesome, null)
+                    Text(if (mixLoading) "Creating your mix..." else "Quick Mix / For You",
+                        Modifier.padding(start = 8.dp))
+                }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Favourites", "Playlists", "Recently played").forEachIndexed { index, label ->
+                    listOf("Favourites", "Playlists", "Recently played", "Downloads").forEachIndexed { index, label ->
                         FilterChip(selected = libraryTab == index, onClick = { libraryTab = index; playlistId = null }, label = { Text(label) })
                     }
                 }
                 val selected = playlists.firstOrNull { it.id == playlistId }
-                if (libraryTab == 1 && selected == null) {
+                if (libraryTab == 3) {
+                    DownloadsPanel(downloads, vm)
+                } else if (libraryTab == 1 && selected == null) {
                     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         item { OutlinedButton(onClick = { naming = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Text("New playlist", Modifier.padding(start = 8.dp)) } }
                         if (playlists.isEmpty()) item { EmptyState("Make a little collection", "Create a playlist, then add tracks from search.", Icons.Default.LibraryMusic) }
@@ -167,7 +191,7 @@ import com.still.music.provider.Track
                         items(tracks, key = Track::id) { track ->
                             TrackRow(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
                                 { vm.play(track, tracks) }, { vm.favourite(track) }, { vm.enqueue(track) }, { addTrack = track },
-                                onRemove = if (selected != null) ({ vm.removeFromPlaylist(selected.id, track) }) else null)
+                                onDownload = { vm.download(track) }, onRemove = if (selected != null) ({ vm.removeFromPlaylist(selected.id, track) }) else null)
                         }
                     }
                 }
@@ -175,7 +199,11 @@ import com.still.music.provider.Track
         }
     }
     if (nowPlaying && player.current != null) FullScreenSheet("Now playing", { nowPlaying = false }) {
-        NowPlaying(player, favourites.any { it.id == player.current?.id }, vm, { queue = true })
+        NowPlaying(player, favourites.any { it.id == player.current?.id }, vm,
+            onQueue = { queue = true }, onPlaylist = {
+                addTrack = player.current
+                nowPlaying = false
+            })
     }
     if (queue) FullScreenSheet("Queue", { queue = false }) {
         Text(if (player.shuffle) "Shuffle is on. This list shows your editable queue order." else "Plays from top to bottom.",
@@ -202,20 +230,24 @@ import com.still.music.provider.Track
         }
     }
     if (settings) AlertDialog(onDismissRequest = { settings = false }, title = { Text("Preferences") },
-        text = { Column {
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Preload next track", Modifier.weight(1f))
                 Switch(preload, onCheckedChange = vm::setPreload, modifier = Modifier.semantics { contentDescription = "Preload next track" })
             }
-            Text("Buffers up to five seconds ahead in memory. Uses more mobile data. No audio is saved for offline listening.")
+            Text("Buffers up to five seconds ahead in memory. Uses more mobile data. Use Download to save a full song for offline listening.")
             Spacer(Modifier.height(16.dp))
-            Text("Still is free and ad-free. Music is supplied by Audius; catalog and access may change. Your library stays on this device.")
+            Text("This session: ${playbackHealth.bufferWaits} buffer waits, ${playbackHealth.audioUnderruns} audio underruns.", style = MaterialTheme.typography.bodySmall)
+            Text("Buffer waits include seeking. Underruns can indicate device or emulator load.", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(12.dp))
+            Text("Still is free and ad-free. YouTube Music access is unofficial and may stop working when the service changes. Your library stays on this device. Powered by NewPipeExtractor (GPL-3.0-or-later).")
         } }, confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } })
     if (addTrack != null && !naming) AlertDialog(onDismissRequest = { addTrack = null }, title = { Text("Add to playlist") },
         text = { LazyColumn {
             if (playlists.isEmpty()) item { Text("Create your first playlist.") }
             items(playlists, key = Playlist::id) { list ->
-                TextButton(onClick = { addTrack?.let { vm.addToPlaylist(list.id, it) }; addTrack = null }, modifier = Modifier.fillMaxWidth()) { Text(list.name) }
+                TextButton(onClick = { addTrack?.let { vm.addTrackToPlaylist(list.id, it) }; addTrack = null },
+                    modifier = Modifier.fillMaxWidth()) { Text(list.name) }
             }
         } }, confirmButton = { TextButton(onClick = { naming = true }) { Text("New playlist") } },
         dismissButton = { TextButton(onClick = { addTrack = null }) { Text("Cancel") } })
@@ -236,15 +268,36 @@ import com.still.music.provider.Track
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Cancel") } })
     }
 }
-@Composable private fun NowPlaying(state: PlaybackState, favourite: Boolean, vm: StillViewModel, queue: () -> Unit) {
+@Composable private fun NowPlaying(state: PlaybackState, favourite: Boolean, vm: StillViewModel,
+    onQueue: () -> Unit, onPlaylist: () -> Unit) {
     val track = state.current ?: return
+    var menu by remember(track.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Artwork(track, Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f))
         Spacer(Modifier.height(28.dp))
-        Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
-        Text(track.artist, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-        Text("Audius", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            AnimatedVisualizerBar(
+                isPlaying = state.playing && state.connected && !state.buffering && state.error == null,
+                modifier = Modifier.size(48.dp).padding(horizontal = 8.dp, vertical = 10.dp))
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
+                Text(track.artist, style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                Text(if (track.id.startsWith("youtube:")) "YouTube Music" else "Audius",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 6.dp))
+            }
+            Box {
+                Action(Icons.Default.MoreVert, "Options for ${track.title}", onClick = { menu = true })
+                DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Add to playlist") }, onClick = {
+                        menu = false
+                        onPlaylist()
+                    })
+                }
+            }
+        }
         Spacer(Modifier.height(20.dp))
         var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
         Slider(value = dragging ?: state.position.toFloat().coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
@@ -266,15 +319,119 @@ import com.still.music.provider.Track
                 "Repeat ${when (state.repeat) { 1 -> "one"; 2 -> "all"; else -> "off" }}. Change repeat mode",
                 tint = if (state.repeat != 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = vm::repeat)
         }
-        if (state.buffering) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Connecting to Audius…", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall) }
+        if (state.buffering) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Connecting to music…", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall) }
         state.error?.let { ErrorState(it, vm::toggle) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 if (favourite) "Remove from favourites" else "Add to favourites",
                 tint = if (favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = { vm.favourite(track) })
-            TextButton(onClick = queue) { Icon(Icons.AutoMirrored.Filled.QueueMusic, null); Text("Queue", Modifier.padding(start = 8.dp)) }
+            TextButton(onClick = onQueue) { Icon(Icons.AutoMirrored.Filled.QueueMusic, null); Text("Queue", Modifier.padding(start = 8.dp)) }
         }
+        MusicVolumeControl(onError = { vm.message.value = it })
+        DownloadButton(track, vm)
+        LyricsPanel(track, state.position, vm)
         Spacer(Modifier.height(24.dp))
+    }
+}
+@Composable fun AnimatedVisualizerBar(isPlaying: Boolean, modifier: Modifier = Modifier) {
+    val rhythms = remember {
+        List(5) { Random.nextInt(350, 850) to Random.nextDouble(0.55, 1.0).toFloat() }
+    }
+    val transition = rememberInfiniteTransition(label = "Visualizer rhythm")
+    val levels = rhythms.mapIndexed { index, (duration, peak) ->
+        transition.animateFloat(
+            initialValue = 0.1f,
+            targetValue = peak,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = duration, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+                initialStartOffset = StartOffset(index * 137, StartOffsetType.FastForward)),
+            label = "Visualizer bar $index")
+    }
+    val activity = animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0f,
+        animationSpec = tween(350, easing = FastOutSlowInEasing),
+        label = "Visualizer activity")
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(modifier.size(width = 32.dp, height = 28.dp).clearAndSetSemantics { }) {
+        val barWidth = size.width / 9f
+        val baseline = minOf(4.dp.toPx(), size.height)
+        val amount = activity.value
+        levels.forEachIndexed { index, level ->
+            val height = baseline + (size.height - baseline) *
+                if (amount > 0f) level.value * amount else 0f
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(index * barWidth * 2f, size.height - height),
+                size = Size(barWidth, height),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f))
+        }
+    }
+}
+
+@Composable private fun MusicVolumeControl(onError: (String) -> Unit) {
+    val context = LocalContext.current
+    val audio = remember(context) { context.getSystemService(AudioManager::class.java) }
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.parent as? DialogWindowProvider)?.window
+        val previousStream = window?.volumeControlStream
+        window?.volumeControlStream = AudioManager.STREAM_MUSIC
+        onDispose { if (previousStream != null) window.volumeControlStream = previousStream }
+    }
+
+    fun readVolume() = audio.getStreamVolume(AudioManager.STREAM_MUSIC) to
+        audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+
+    // Poll the public API only while visible. This also catches hardware keys and
+    // output-device changes without relying on undocumented volume broadcasts.
+    val volumeChanges = remember(audio) {
+        flow {
+            while (true) {
+                emit(readVolume())
+                delay(250)
+            }
+        }
+    }
+    val observed by volumeChanges.collectAsStateWithLifecycle(initialValue = remember(audio) { readVolume() })
+    var volume by remember(audio) { mutableIntStateOf(observed.first) }
+    val maximum = observed.second.coerceAtLeast(0)
+    var lastAudible by rememberSaveable { mutableIntStateOf(volume.coerceAtLeast(1)) }
+    LaunchedEffect(observed) {
+        volume = observed.first
+        if (volume > 0) lastAudible = volume
+    }
+    val enabled = maximum > 0 && !audio.isVolumeFixed
+    val percentage = if (maximum > 0) (volume * 100f / maximum).roundToInt() else 0
+
+    fun setVolume(value: Int) {
+        try {
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, value.coerceIn(0, maximum), 0)
+            volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+            if (volume > 0) lastAudible = volume
+        } catch (_: SecurityException) {
+            onError("Media volume could not be changed. Use your device's volume controls.")
+        }
+    }
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Action(if (volume == 0) Icons.Default.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+            if (volume == 0) "Unmute music" else "Mute music", enabled = enabled) {
+            if (volume > 0) {
+                lastAudible = volume
+                setVolume(0)
+            } else setVolume(lastAudible.coerceIn(1, maximum))
+        }
+        Slider(value = volume.toFloat().coerceIn(0f, maximum.coerceAtLeast(1).toFloat()),
+            onValueChange = { setVolume(it.roundToInt()) }, enabled = enabled,
+            valueRange = 0f..maximum.coerceAtLeast(1).toFloat(),
+            steps = (maximum - 1).coerceAtLeast(0),
+            modifier = Modifier.weight(1f).semantics {
+                contentDescription = "Music volume"
+                stateDescription = "$percentage percent"
+            })
+        Text("$percentage%", style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.widthIn(min = 48.dp).padding(start = 8.dp))
     }
 }
 @Composable private fun FullScreenSheet(title: String, dismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -291,7 +448,7 @@ import com.still.music.provider.Track
     }
 }
 @Composable private fun TrackRow(track: Track, favourite: Boolean, current: Boolean, onPlay: () -> Unit,
-    onFavourite: () -> Unit, onQueue: () -> Unit, onPlaylist: () -> Unit, onRemove: (() -> Unit)? = null) {
+    onFavourite: () -> Unit, onQueue: () -> Unit, onPlaylist: () -> Unit, onRemove: (() -> Unit)? = null, onDownload: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Play ${track.title}", role = Role.Button, onClick = onPlay)
         .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -309,6 +466,7 @@ import com.still.music.provider.Track
                     onClick = { menu = false; onFavourite() })
                 DropdownMenuItem(text = { Text("Add to queue") }, enabled = track.playable, onClick = { menu = false; onQueue() })
                 DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
+                onDownload?.let { DropdownMenuItem(text = { Text("Download for offline") }, enabled = track.playable, onClick = { menu = false; it() }) }
                 onRemove?.let { DropdownMenuItem(text = { Text("Remove from playlist") }, onClick = { menu = false; it() }) }
             }
         }

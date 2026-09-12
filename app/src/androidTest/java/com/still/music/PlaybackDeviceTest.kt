@@ -24,7 +24,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
 
-/** Live Audius test: no fixtures or substituted audio. Requires internet and public track availability. */
+/** Live YouTube Music test: no fixtures or substituted audio. Requires internet and public track availability. */
 @RunWith(AndroidJUnit4::class)
 class PlaybackDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
@@ -42,12 +42,74 @@ class PlaybackDeviceTest {
         }
         assertTrue("Condition not met within $timeoutMs ms", main(condition))
     }
+
+    @Test fun realDownloadLyricsAndNetworkDisabledPlayback() {
+        val app = compose.activity.application as StillApp
+        val device = UiDevice.getInstance(instrumentation)
+        val track = runBlocking { app.graph.music.search("Daft Punk Get Lucky").first() }
+        val existed = app.graph.downloads.localFile(track.id) != null
+        val wifi = device.executeShellCommand("settings get global wifi_on").trim() != "0"
+        val data = device.executeShellCommand("settings get global mobile_data").trim() == "1"
+        lateinit var future: ListenableFuture<MediaController>
+        main { future = MediaController.Builder(app, SessionToken(app, ComponentName(app, PlaybackService::class.java))).buildAsync() }
+        val controller = future.get(20, TimeUnit.SECONDS)
+        try {
+            compose.onNodeWithText("Search music").performTextInput("Daft Punk Get Lucky")
+            compose.waitUntil(60000) { compose.onAllNodesWithText(track.title).fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithContentDescription("Options for ${track.title}").onFirst().performClick()
+            compose.onNodeWithText("Download for offline").performClick()
+            val entry = runBlocking {
+                kotlinx.coroutines.withTimeout(480000) {
+                    app.graph.downloads.entries.first { entries -> entries.any { it.track.id == track.id && (it.ready || (!it.active && it.status != "Not downloaded")) } }
+                        .first { it.track.id == track.id }
+                }
+            }
+            assertTrue("Download failed: ${entry.status}", entry.ready)
+            assertTrue("Completed audio must exist", entry.bytes > 10000)
+            // Verify persisted catalog reconstruction, not just the current in-memory list.
+            val reopened = com.still.music.offline.OfflineStore(java.io.File(app.filesDir, "downloads"))
+            assertTrue(reopened.tracks().any { it.id == track.id })
+            assertNotNull(reopened.audio(track.id))
+            val lyricTrack = com.still.music.provider.Track("lyrics:live-probe", "Get Lucky", "Daft Punk")
+            val lyrics = runBlocking { app.graph.lyrics.load(lyricTrack, true) }
+            assertNotNull("Live LRCLIB should return this known recording", lyrics)
+            assertTrue(lyrics!!.plain.isNotBlank() || lyrics.lines.isNotEmpty())
+
+            device.executeShellCommand("svc wifi disable")
+            device.executeShellCommand("svc data disable")
+            val connectivity = app.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            await(20000) { connectivity.activeNetwork == null }
+            runBlocking { app.graph.resolver.invalidate(track.id) }
+            assertTrue(runBlocking { app.graph.resolver.resolve(track.id).url }.startsWith("file:"))
+            assertEquals(lyrics, runBlocking { app.graph.lyrics.load(lyricTrack) })
+            compose.onNodeWithText("Library").performClick()
+            compose.onNodeWithText("Downloads").performScrollTo().performClick()
+            compose.onAllNodesWithText("Play offline").onFirst().performClick()
+            await { controller.isPlaying && controller.currentPosition > 1500 }
+            assertEquals(track.id, main { controller.currentMediaItem!!.mediaId })
+            main { controller.seekTo(20000) }
+            await { controller.isPlaying && controller.currentPosition >= 21500 }
+            device.pressHome()
+            device.sleep()
+            val before = main { controller.currentPosition }
+            await(15000) { controller.isPlaying && controller.currentPosition > before + 3000 }
+            main { controller.pause() }
+        } finally {
+            device.executeShellCommand("svc wifi " + if (wifi) "enable" else "disable")
+            device.executeShellCommand("svc data " + if (data) "enable" else "disable")
+            device.wakeUp()
+            device.executeShellCommand("wm dismiss-keyguard")
+            main { controller.pause(); controller.release() }
+            if (!existed) runBlocking { app.graph.downloads.remove(track.id) }
+        }
+    }
+
     @Test fun realSearchPlaybackSystemControlsAndTransition() {
         val app = compose.activity.application as StillApp
-        val tracks = runBlocking { app.graph.audius.search("ambient").filter { it.playable } }
-        assertTrue("Need at least two public Audius tracks", tracks.size >= 2)
+        val tracks = runBlocking { app.graph.music.search("Daft Punk Get Lucky").filter { it.playable } }
+        assertTrue("Need at least two YouTube Music tracks", tracks.size >= 2)
         val first = tracks.first()
-        compose.onNodeWithText("Search Audius").performTextInput("ambient")
+        compose.onNodeWithText("Search music").performTextInput("Daft Punk Get Lucky")
         compose.waitUntil(60000) { compose.onAllNodesWithText(first.title).fetchSemanticsNodes().isNotEmpty() }
         lateinit var future: ListenableFuture<MediaController>
         main { future = MediaController.Builder(app, SessionToken(app, ComponentName(app, PlaybackService::class.java))).buildAsync() }
