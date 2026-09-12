@@ -1,4 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.still.music
 
 import android.net.Uri
@@ -17,6 +16,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class RetryPolicyTest {
     private fun info(count: Int, status: Int = 0) = LoadErrorHandlingPolicy.LoadErrorInfo(
         LoadEventInfo(1, DataSpec(Uri.parse("https://example.org/audio")), 0), MediaLoadData(C.DATA_TYPE_MEDIA),

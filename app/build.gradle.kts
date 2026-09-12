@@ -11,11 +11,11 @@ val publicKey = providers.environmentVariable("AUDIUS_API_KEY").orNull ?: creden
 require(publicKey.matches(Regex("[A-Za-z0-9_-]*"))) { "AUDIUS_API_KEY must be a public application key, not a bearer token." }
 android {
     namespace = "com.still.music"
-    compileSdk = 36
+    compileSdk { version = release(37) { minorApiLevel = 1 } }
     defaultConfig {
         applicationId = "com.still.music"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -39,26 +39,26 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("androidx.media3:media3-exoplayer:1.11.0")
-    implementation("androidx.media3:media3-session:1.11.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
     implementation("androidx.datastore:datastore-preferences:1.2.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-    implementation("com.squareup.okhttp3:okhttp:5.3.2")
-    implementation("io.coil-kt.coil3:coil-compose:3.3.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.2")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.2")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
-    testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")
+    testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

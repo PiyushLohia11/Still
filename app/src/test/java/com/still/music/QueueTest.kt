@@ -1,4 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.still.music
 
 import android.content.Context
@@ -17,6 +16,7 @@ import org.robolectric.annotation.LooperMode
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 @LooperMode(LooperMode.Mode.PAUSED)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class QueueTest {
     private fun withPlayer(block: (ExoPlayer) -> Unit) {
         val player = ExoPlayer.Builder(ApplicationProvider.getApplicationContext<Context>()).build()

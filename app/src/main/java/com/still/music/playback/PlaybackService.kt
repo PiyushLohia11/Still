@@ -1,4 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.still.music.playback
 
 import android.app.PendingIntent
@@ -23,6 +22,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import java.io.IOException
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class StreamingRetryPolicy : DefaultLoadErrorHandlingPolicy(3) {
     override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
         val error = info.exception
@@ -35,6 +35,7 @@ class StreamingRetryPolicy : DefaultLoadErrorHandlingPolicy(3) {
         return (1000L shl (info.errorCount - 1).coerceIn(0, 2)).coerceAtMost(4000)
     }
 }
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private val graph get() = (application as StillApp).graph
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
