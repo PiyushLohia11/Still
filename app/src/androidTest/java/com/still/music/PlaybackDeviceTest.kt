@@ -17,6 +17,7 @@ import androidx.test.uiautomator.UiDevice
 import com.google.common.util.concurrent.ListenableFuture
 import com.still.music.playback.PlaybackService
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -97,9 +98,9 @@ class PlaybackDeviceTest {
             }
             await(60000) { controller.currentMediaItemIndex == 1 && controller.isPlaying && controller.currentPosition > 300 }
             main { controller.pause() }
-            val recents = runBlocking { app.graph.database.library().isFavourite(first.id) }
-            // A database call here also catches accidental main-thread persistence.
-            assertNotNull(recents)
+            val recents = runBlocking { app.graph.library.recents.first() }
+            // Only tracks that really started playing should be recorded.
+            assertTrue(recents.any { it.id == first.id })
             device.executeShellCommand("am start -n com.still.music/.MainActivity")
         } finally {
             main { controller.pause(); controller.release() }

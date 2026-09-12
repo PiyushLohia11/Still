@@ -30,7 +30,7 @@ class AudiusProviderTest {
     @Test fun ignoresMalformedRowsAndNullArtwork() {
         assertNull(AudiusParser.track(Json.parseToJsonElement("""{"id":"missing-fields"}""").jsonObject))
         assertNull(parse(""","artwork":null""").artwork)
-        assertEquals(0, AudiusParser.track(Json.parseToJsonElement("""{"id":"t","title":"T","user":{"name":"A"}}""").jsonObject)!!.durationMs)
+        assertEquals(0L, AudiusParser.track(Json.parseToJsonElement("""{"id":"t","title":"T","user":{"name":"A"}}""").jsonObject)!!.durationMs)
     }
     @Test fun allowedPublicKeyDoesNotOverrideGate() {
         val parsed = AudiusParser.track(Json.parseToJsonElement(row(""","allowed_api_keys":["public-key"],"is_stream_gated":true""")).jsonObject, "public-key")!!

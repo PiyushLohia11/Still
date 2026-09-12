@@ -66,10 +66,14 @@ import com.still.music.provider.Track
     BackHandler(playlistId != null && !nowPlaying && !queue) { playlistId = null }
     Scaffold(
         topBar = {
-            TopAppBar(title = { Column {
-                Text("Still", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.headlineMedium)
-                Text("Music, with room to breathe.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } }, actions = { Action(Icons.Default.Tune, "Preferences", onClick = { settings = true }) })
+            Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Still", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.headlineMedium)
+                    Text("Music, with room to breathe.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Action(Icons.Default.Tune, "Preferences", onClick = { settings = true })
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {

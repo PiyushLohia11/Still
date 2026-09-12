@@ -96,7 +96,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         act { it.setMediaItems(queue.map(Track::mediaItem), index, 0); it.prepare(); it.play() }
     }
     fun toggle() = act {
-        if (it.playWhenReady) it.pause() else {
+        if (it.playerError != null) { it.prepare(); it.play() } else if (it.playWhenReady) it.pause() else {
             if (it.playbackState == Player.STATE_IDLE || it.playerError != null) it.prepare()
             if (it.playbackState == Player.STATE_ENDED) it.seekToDefaultPosition(0)
             it.play()
@@ -149,5 +149,5 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
             p.currentMediaItemIndex.coerceAtLeast(0), p.playWhenReady, p.playbackState == Player.STATE_BUFFERING,
             p.currentPosition.coerceAtLeast(0), duration, p.shuffleModeEnabled, p.repeatMode, error, graph.playbackReady.value)
     }
-    override fun onCleared() { controller?.removeListener(listener); MediaController.releaseFuture(future); super.onCleared() }
+    override fun onCleared() { controller?.removeListener(listener); MediaController.releaseFuture(future) }
 }
