@@ -18,7 +18,7 @@ Checked against official release documentation and Google Maven / Maven Central 
 | OkHttp / MockWebServer | 5.5.0 | Maven Central com.squareup.okhttp3 metadata |
 | Coil | 3.6.2 | https://coil-kt.github.io/coil/changelog/ |
 | Robolectric | 4.17 | https://github.com/robolectric/robolectric/releases |
-| AndroidX Test | Core/Runner/Rules 1.7.0, JUnit 1.3.0, UIAutomator 2.4.0 | https://developer.android.com/jetpack/androidx/releases/test |
+| AndroidX Test | Core/Runner/Rules 1.7.0, JUnit 1.3.0, Espresso 3.7.0, UIAutomator 2.4.0 | https://developer.android.com/jetpack/androidx/releases/test |
 
 Compile SDK 37.1 is necessary for the current Compose and Lifecycle artifacts. Target SDK is 37; minimum runtime is API 26. JDK 21 from Android Studio is used for verification. Media3's playlist preload and shuffle-order APIs require explicit AndroidX opt-in; they are isolated in the service and tested against this pinned version.
 
