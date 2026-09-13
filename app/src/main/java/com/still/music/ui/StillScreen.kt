@@ -85,7 +85,7 @@ import kotlin.random.Random
     var importName by rememberSaveable { mutableStateOf("") }
     var importInput by rememberSaveable { mutableStateOf("") }
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    var libraryTab by rememberSaveable { mutableIntStateOf(0) }
+    var libraryTab by rememberSaveable { mutableIntStateOf(1) }
     var nowPlaying by rememberSaveable { mutableStateOf(false) }
     var queue by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
@@ -104,13 +104,14 @@ import kotlin.random.Random
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Still", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.headlineMedium)
-                    Text("Music, with room to breathe.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (playlistId == null) {
+                Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("Still", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Action(Icons.Default.Tune, "Preferences", onClick = { settings = true })
                 }
-                Action(Icons.Default.Tune, "Preferences", onClick = { settings = true })
+            } else {
+                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -178,23 +179,26 @@ import kotlin.random.Random
                     }
                 }
             } else {
-                TextButton(onClick = { importing = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (importState.running) "Imported ${importState.imported} of ${importState.total}" else "Import Playlist")
-                }
-                FilledTonalButton(onClick = vm::playSmartMix, enabled = !mixLoading && player.connected,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    if (mixLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.AutoAwesome, null)
-                    Text(if (mixLoading) "Creating your mix..." else "Quick Mix / For You",
-                        Modifier.padding(start = 8.dp))
-                }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(2 to "Tracks", 1 to "Playlists", 0 to "Favorites", 3 to "Downloads").forEach { (index, label) ->
-                        FilterChip(selected = libraryTab == index, onClick = { libraryTab = index; playlistId = null },
-                            shape = CircleShape, label = { Text(label, Modifier.padding(horizontal = 6.dp)) })
+                val selected = playlists.firstOrNull { it.id == playlistId }
+                if (selected == null) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FilledTonalButton(onClick = vm::playSmartMix, enabled = !mixLoading && player.connected, modifier = Modifier.weight(1f).height(48.dp)) {
+                            if (mixLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            else Icon(Icons.Default.AutoAwesome, null)
+                            Text("Quick Mix", Modifier.padding(start = 8.dp))
+                        }
+                        OutlinedButton(onClick = { importing = true }, modifier = Modifier.weight(1f).height(48.dp)) {
+                            Icon(Icons.Default.Download, null)
+                            Text(if (importState.running) "${importState.imported}/${importState.total}" else "Import", Modifier.padding(start = 8.dp))
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1 to "Playlists", 0 to "Favorites", 2 to "Tracks", 3 to "Downloads").forEach { (index, label) ->
+                            FilterChip(selected = libraryTab == index, onClick = { libraryTab = index; playlistId = null },
+                                shape = CircleShape, label = { Text(label, Modifier.padding(horizontal = 6.dp)) })
+                        }
                     }
                 }
-                val selected = playlists.firstOrNull { it.id == playlistId }
                 if (libraryTab == 3) {
                     DownloadsPanel(downloads, vm)
                 } else if (libraryTab == 1 && selected == null) {
@@ -218,13 +222,34 @@ import kotlin.random.Random
                     }
                 } else {
                     val tracks = if (libraryTab == 0) favourites else if (libraryTab == 2) recents else playlistTracks
-                    if (selected != null) Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Action(Icons.AutoMirrored.Filled.ArrowBack, "Back to playlists", onClick = { playlistId = null })
-                        Text(selected.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { tracks.firstOrNull { it.playable }?.let { vm.play(it, tracks) } }, enabled = tracks.any { it.playable }) { Text("Play") }
+                    if (selected != null) Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Action(Icons.AutoMirrored.Filled.ArrowBack, "Back to playlists", onClick = { playlistId = null })
+                            Text(selected.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button(
+                                onClick = { tracks.firstOrNull { it.playable }?.let { vm.play(it, tracks) } },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                enabled = tracks.any { it.playable },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Play")
+                            }
+                            FilledTonalButton(
+                                onClick = { vm.playShuffled(tracks) },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                enabled = tracks.any { it.playable }
+                            ) {
+                                Icon(Icons.Default.Shuffle, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Shuffle")
+                            }
+                        }
+                        PlaylistDownloadButton(tracks, "playlist:" + selected.id, vm, onDownload = { vm.downloadPlaylist(selected.id) })
                     }
-                    if (selected != null) PlaylistDownloadButton(
-                        tracks, "playlist:" + selected.id, vm, onDownload = { vm.downloadPlaylist(selected.id) })
                     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                         if (tracks.isEmpty()) item { EmptyState(
                             if (libraryTab == 0) "Keep what you love" else if (libraryTab == 2) "Your listening starts here" else "A quiet playlist",

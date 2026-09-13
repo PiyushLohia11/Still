@@ -22,7 +22,7 @@ import com.still.music.provider.Track
     val allReady = ids.isNotEmpty() && ready == ids.size
     val scheduling = batchKey in batches
     val remaining = ids.size - ready - active
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxWidth()) {
         OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth(),
             enabled = ids.isNotEmpty() && !scheduling && remaining > 0) {
             Icon(if (allReady) Icons.Default.DownloadDone else Icons.Default.Download, null)

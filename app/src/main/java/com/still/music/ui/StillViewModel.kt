@@ -218,6 +218,18 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         radioJob?.cancel(); radioJob = null; radioAttempt = null
         act { it.setMediaItems(queue.map(Track::mediaItem), index, 0); it.prepare(); it.play() }
     }
+    fun playShuffled(tracks: List<Track>) {
+        val playable = tracks.filter(Track::playable).distinctBy(Track::id).take(QueueRules.MAX_SIZE)
+        if (playable.isEmpty()) return
+        val startIndex = playable.indices.random()
+        radioJob?.cancel(); radioJob = null; radioAttempt = null
+        act { 
+            it.setMediaItems(playable.map(Track::mediaItem), startIndex, 0)
+            it.shuffleModeEnabled = true
+            it.prepare()
+            it.play() 
+        }
+    }
     fun toggle() = act {
         if (it.playerError != null) { it.prepare(); it.play() } else if (it.playWhenReady) it.pause() else {
             if (it.playbackState == Player.STATE_IDLE || it.playerError != null) it.prepare()
