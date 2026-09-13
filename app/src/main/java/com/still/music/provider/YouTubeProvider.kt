@@ -58,7 +58,7 @@ class YouTubeProvider(http: OkHttpClient) : MusicProvider {
             }
             items.filterIsInstance<StreamInfoItem>().map { item ->
                 Track("youtube:" + service.streamLHFactory.getId(item.url), item.name,
-                    item.uploaderName.orEmpty(), item.thumbnails.firstOrNull()?.url,
+                    item.uploaderName.orEmpty(), bestArtwork(item.thumbnails),
                     (item.duration * 1000).coerceAtLeast(0))
             }.distinctBy { it.id }.drop(offset).take(30)
         }
@@ -69,7 +69,7 @@ class YouTubeProvider(http: OkHttpClient) : MusicProvider {
         return extract {
             val info = StreamInfo.getInfo(service, url)
             Track(qualifiedId, info.name, info.uploaderName.orEmpty(),
-                info.thumbnails.firstOrNull()?.url, (info.duration * 1000).coerceAtLeast(0))
+                bestArtwork(info.thumbnails), (info.duration * 1000).coerceAtLeast(0))
         }
     }
 
@@ -84,7 +84,7 @@ class YouTubeProvider(http: OkHttpClient) : MusicProvider {
                         catch (_: Exception) { return@mapNotNull null }
                     if (!id.matches(Regex("[A-Za-z0-9_-]{11}"))) return@mapNotNull null
                     Track("youtube:$id", item.name, item.uploaderName.orEmpty(),
-                        item.thumbnails.firstOrNull()?.url, item.duration * 1000)
+                        bestArtwork(item.thumbnails), item.duration * 1000)
                 }.filterNot { it.id == trackId }.distinctBy(Track::id).take(30)
         }
     }

@@ -107,7 +107,7 @@ object AudiusParser {
         }
         val artwork = row["artwork"] as? JsonObject
         return Track("audius:$id", title.trim(), artist,
-            (artwork?.string("480x480") ?: artwork?.string("150x150"))?.takeIf { it.startsWith("https://") },
+            (artwork?.string("1000x1000") ?: artwork?.string("480x480") ?: artwork?.string("150x150"))?.takeIf { it.startsWith("https://") },
             ((row["duration"] as? JsonPrimitive)?.doubleOrNull?.times(1000)?.toLong() ?: 0).coerceAtLeast(0), reason)
     }
 }

@@ -43,6 +43,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.Image
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import com.still.music.provider.artworkUrls
 import com.still.music.data.Playlist
 import com.still.music.provider.Track
 import kotlinx.coroutines.delay
@@ -53,16 +57,16 @@ import kotlin.random.Random
 @Composable fun StillTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Color(0xFFA4B8A5), onPrimary = Color(0xFF152019),
-        primaryContainer = Color(0xFF303D33), onPrimaryContainer = Color(0xFFD7E5D7),
-        background = Color(0xFF121314), onBackground = Color(0xFFF5F5F5),
-        surface = Color(0xFF121314), onSurface = Color(0xFFF5F5F5),
-        surfaceVariant = Color(0xFF1E2022), onSurfaceVariant = Color(0xFFC2C5C8),
-        surfaceContainer = Color(0xFF1E2022), surfaceContainerHigh = Color(0xFF252729),
-        surfaceContainerHighest = Color(0xFF2B2D30), outlineVariant = Color(0xFF36393C),
-        secondaryContainer = Color(0xFF303D33), onSecondaryContainer = Color(0xFFD7E5D7),
-        outline = Color(0xFF727971)), shapes = Shapes(
-            medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(20.dp),
-            extraLarge = RoundedCornerShape(20.dp)), content = content)
+        primaryContainer = Color(0xFF303D33).copy(alpha = 0.6f), onPrimaryContainer = Color(0xFFD7E5D7),
+        background = Color.Transparent, onBackground = Color.White,
+        surface = Color.Black.copy(alpha = 0.2f), onSurface = Color.White,
+        surfaceVariant = Color.Black.copy(alpha = 0.4f), onSurfaceVariant = Color(0xFFC2C5C8),
+        surfaceContainer = Color.Black.copy(alpha = 0.3f), surfaceContainerHigh = Color.Black.copy(alpha = 0.5f),
+        surfaceContainerHighest = Color.Black.copy(alpha = 0.7f), outlineVariant = Color.White.copy(alpha = 0.15f),
+        secondaryContainer = Color.Black.copy(alpha = 0.6f), onSecondaryContainer = Color(0xFFD7E5D7),
+        outline = Color.White.copy(alpha = 0.3f)), shapes = Shapes(
+            medium = RoundedCornerShape(24.dp), large = RoundedCornerShape(24.dp),
+            extraLarge = RoundedCornerShape(32.dp)), content = content)
 }
 @Composable fun StillScreen(vm: StillViewModel) {
     val search by vm.search.collectAsStateWithLifecycle()
@@ -94,7 +98,11 @@ import kotlin.random.Random
     LaunchedEffect(playlistId) { vm.selectPlaylist(playlistId) }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.message.value = null } }
     BackHandler(playlistId != null && !nowPlaying && !queue) { playlistId = null }
+    var playerPoster by remember(player.current?.id, player.current?.artwork) { mutableStateOf<Image?>(null) }
+    val playerGradient = rememberPlayerGradient(playerPoster)
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(playerGradient))) {
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -110,27 +118,28 @@ import kotlin.random.Random
             Column {
                 player.current?.let { current ->
                     Surface(color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(28.dp), shadowElevation = 8.dp,
+                        shape = RoundedCornerShape(32.dp), shadowElevation = 0.dp,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Open Now Playing") { nowPlaying = true }.padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Artwork(current, Modifier.size(48.dp))
+                            Artwork(current, Modifier.size(48.dp).clip(CircleShape), cornerRadius = 24.dp)
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                 Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.SemiBold, modifier = Modifier.basicMarquee())
                                 Text(current.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (player.buffering) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            if (player.buffering) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                             else VisualizerBars(player.playing && player.connected && player.error == null,
-                                Modifier.size(width = 20.dp, height = 20.dp), barCount = 4)
+                                Modifier.size(width = 24.dp, height = 24.dp), barCount = 4)
+                            Spacer(Modifier.width(12.dp))
                             PlaybackButton(player.playing, player.connected, onClick = vm::toggle)
                             Action(Icons.Default.SkipNext, "Next track", onClick = vm::next)
                         }
                     }
                 }
-                NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                NavigationBar(containerColor = Color.Transparent, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
                     NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Default.Search, null) }, label = { Text("Search") })
                     NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.Default.LibraryMusic, null) }, label = { Text("Library") })
                 }
@@ -223,14 +232,15 @@ import kotlin.random.Random
             }
         }
     }
-    FullScreenSheet("Now playing", { nowPlaying = false }, visible = nowPlaying && player.current != null, showHeader = false) {
+    }
+    FullScreenSheet("Now playing", { nowPlaying = false }, visible = nowPlaying && player.current != null, showHeader = false, backgroundColors = playerGradient) {
         NowPlaying(player, favourites.any { it.id == player.current?.id }, vm,
-            onClose = { nowPlaying = false }, onQueue = { queue = true }, onPlaylist = {
+            onArtworkLoaded = { playerPoster = it }, onClose = { nowPlaying = false }, onQueue = { queue = true }, onPlaylist = {
                 addTrack = player.current
                 nowPlaying = false
             })
     }
-    if (queue) FullScreenSheet("Queue", { queue = false }) {
+    if (queue) FullScreenSheet("Queue", { queue = false }, backgroundColors = listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.95f))) {
         Text(if (player.shuffle) "Shuffle is on. This list shows your editable queue order." else "Plays from top to bottom.",
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -313,7 +323,7 @@ import kotlin.random.Random
     }
 }
 @Composable private fun NowPlaying(state: PlaybackState, favourite: Boolean, vm: StillViewModel,
-    onQueue: () -> Unit, onPlaylist: () -> Unit, onClose: () -> Unit) {
+    onQueue: () -> Unit, onPlaylist: () -> Unit, onClose: () -> Unit, onArtworkLoaded: (Image?) -> Unit) {
     val track = state.current ?: return
     var menu by remember(track.id) { mutableStateOf(false) }
     var volumeOpen by rememberSaveable { mutableStateOf(false) }
@@ -338,7 +348,7 @@ import kotlin.random.Random
         AnimatedVisibility(volumeOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
             VolumeControlBar(onError = { vm.message.value = it })
         }
-        Artwork(track, Modifier.size(artSize).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp)
+        Artwork(track, Modifier.size(artSize).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp, highQuality = true, onLoaded = onArtworkLoaded)
         Spacer(Modifier.height(24.dp))
         Text(track.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
             maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -434,7 +444,7 @@ import kotlin.random.Random
 }
 
 @Composable private fun FullScreenSheet(title: String, dismiss: () -> Unit, visible: Boolean = true, showHeader: Boolean = true,
-    content: @Composable ColumnScope.() -> Unit) {
+    backgroundColors: List<Color>? = null, content: @Composable ColumnScope.() -> Unit) {
     val visibility = remember { MutableTransitionState(false) }
     LaunchedEffect(visible) { visibility.targetState = visible }
     if (!visibility.currentState && !visibility.targetState && visibility.isIdle) return
@@ -442,10 +452,9 @@ import kotlin.random.Random
         AnimatedVisibility(visibleState = visibility,
             enter = slideInVertically(tween(360, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(220)),
             exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(220))) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Surface(Modifier.fillMaxSize(), color = Color.Transparent) {
             Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                if (showHeader) listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background)
-                else listOf(Color(0xFF070807), Color(0xFF100D09), Color(0xFF352016), Color(0xFF392021))))
+                backgroundColors ?: listOf(Color.Transparent, Color.Transparent)))
                 .safeDrawingPadding().imePadding()) {
                 if (showHeader) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Action(Icons.Default.KeyboardArrowDown, "Close $title", onClick = dismiss)
@@ -484,12 +493,36 @@ import kotlin.random.Random
         }
     }
 }
-@Composable private fun Artwork(track: Track, modifier: Modifier, cornerRadius: Dp = 20.dp) {
+@Composable private fun Artwork(track: Track, modifier: Modifier, cornerRadius: Dp = 20.dp,
+    highQuality: Boolean = false, onLoaded: (Image?) -> Unit = {}) {
+    val context = LocalContext.current
+    val targetSize = if (highQuality) 1200 else 480
+    val urls = remember(track.id, track.artwork, targetSize) {
+        artworkUrls(track.artwork, targetSize, track.id)
+    }
+    var candidate by remember(track.id, urls) { mutableIntStateOf(0) }
+    val request = remember(context, urls, candidate, highQuality) {
+        ImageRequest.Builder(context).data(urls.getOrNull(candidate))
+            .size(targetSize).allowHardware(!highQuality).build()
+    }
     Box(modifier.clip(RoundedCornerShape(cornerRadius)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         Icon(Icons.Default.MusicNote, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
-        AsyncImage(model = track.artwork, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        key(track.id, urls, candidate) {
+            AsyncImage(model = request, contentDescription = if (highQuality) "Cover art for " + track.title else null,
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
+                onSuccess = {
+                    val image = it.result.image
+                    // YouTube can return a tiny placeholder with HTTP 200 for unavailable sizes.
+                    if (image.width <= 120 && image.height <= 120 && candidate < urls.lastIndex) candidate++
+                    else onLoaded(image)
+                },
+                onError = {
+                    if (candidate < urls.lastIndex) candidate++ else onLoaded(null)
+                })
+        }
     }
 }
+
 @Composable private fun PlaybackButton(playing: Boolean, enabled: Boolean, size: Dp = 48.dp,
     prominent: Boolean = true, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
