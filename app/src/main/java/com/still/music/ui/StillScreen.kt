@@ -207,6 +207,8 @@ import kotlin.random.Random
                                 trailingContent = { Box {
                                     Action(Icons.Default.MoreVert, "Playlist options for ${list.name}", onClick = { menu = true })
                                     DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                                        DropdownMenuItem(text = { Text("Download playlist") },
+                                            onClick = { menu = false; vm.downloadPlaylist(list.id) })
                                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; rename = list; naming = true })
                                         DropdownMenuItem(text = { Text("Delete playlist") }, onClick = { menu = false; delete = list })
                                     }
@@ -221,6 +223,8 @@ import kotlin.random.Random
                         Text(selected.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         TextButton(onClick = { tracks.firstOrNull { it.playable }?.let { vm.play(it, tracks) } }, enabled = tracks.any { it.playable }) { Text("Play") }
                     }
+                    if (selected != null) PlaylistDownloadButton(
+                        tracks, "playlist:" + selected.id, vm, onDownload = { vm.downloadPlaylist(selected.id) })
                     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                         if (tracks.isEmpty()) item { EmptyState(
                             if (libraryTab == 0) "Keep what you love" else if (libraryTab == 2) "Your listening starts here" else "A quiet playlist",

@@ -323,6 +323,31 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun removeFromPlaylist(id: Long, track: Track) = library { graph.library.remove(id, track.id) }
     fun download(track: Track) = library { graph.downloads.enqueue(track); message.value = "Download queued. See Library > Downloads." }
+    private val _downloadBatches = MutableStateFlow<Set<String>>(emptySet())
+    val downloadBatches = _downloadBatches.asStateFlow()
+
+    fun downloadPlaylist(id: Long) = queueDownloads("playlist:$id") { graph.library.tracks(id).first() }
+    fun downloadMix(name: String, tracks: List<Track>) = queueDownloads("mix:$name") { tracks.toList() }
+
+    private fun queueDownloads(key: String, load: suspend () -> List<Track>) {
+        if (key in _downloadBatches.value) return
+        _downloadBatches.update { it + key }
+        viewModelScope.launch {
+            try {
+                val result = com.still.music.offline.enqueuePlaylist(load(), graph.downloads::enqueue)
+                if (result.eligible == 0) {
+                    message.value = "There are no downloadable songs in this playlist."
+                    return@launch
+                }
+                message.value = "Playlist downloads scheduled. Already saved or queued songs were skipped." +
+                    (if (result.unavailable > 0) " " + result.unavailable + " unavailable." else "") +
+                    (if (result.failed > 0) " " + result.failed + " could not be queued; tap Download playlist to retry." else "") +
+                    " See Library > Downloads."
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { message.value = "Couldn't queue this playlist. Please retry." }
+            finally { _downloadBatches.update { it - key } }
+        }
+    }
     fun cancelDownload(id: String) = library { graph.downloads.cancel(id) }
     fun removeDownload(id: String) = library { graph.downloads.remove(id) }
     fun loadLyrics(track: Track, force: Boolean = false) {

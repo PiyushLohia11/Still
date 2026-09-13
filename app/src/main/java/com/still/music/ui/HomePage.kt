@@ -80,6 +80,10 @@ private val homeMixes = listOf(
                     OutlinedButton(onClick = { vm.openHomeMix(selected) }, enabled = !home.mixLoading) { Text("Reshuffle") }
                 }
             }
+            item {
+                PlaylistDownloadButton(home.mixTracks, "mix:" + selected.title, vm,
+                    onDownload = { vm.downloadMix(selected.title, home.mixTracks) })
+            }
             if (home.mixLoading) item { HomeLoading() }
             home.mixError?.let { error -> item { HomeError(error) { vm.openHomeMix(selected) } } }
             items(home.mixTracks, key = Track::id) { track ->

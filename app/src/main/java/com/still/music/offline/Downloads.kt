@@ -50,6 +50,9 @@ class Downloads(context: Context, private val providers: ProviderRegistry, http:
 
     fun localFile(id: String): File? = store.audio(id)
     suspend fun enqueue(track: Track) = withContext(Dispatchers.IO) {
+        // A transfer holds the per-track lock; don't make a playlist wait for it to finish.
+        if (store.audio(track.id) != null ||
+            manager.getWorkInfosForUniqueWork(name(track.id)).get().any { !it.state.isFinished }) return@withContext
         lock(track.id).withLock {
             if (store.audio(track.id) != null) return@withLock
             providers.forTrack(track.id)
