@@ -336,7 +336,7 @@ import kotlin.random.Random
             }
         }
         AnimatedVisibility(volumeOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            MusicVolumeControl(onError = { vm.message.value = it })
+            VolumeControlBar(onError = { vm.message.value = it })
         }
         Artwork(track, Modifier.size(artSize).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp)
         Spacer(Modifier.height(24.dp))
@@ -359,19 +359,18 @@ import kotlin.random.Random
         val smoothPosition by animateFloatAsState(state.position.toFloat(),
             animationSpec = tween(if (state.playing && dragging == null) 450 else 0, easing = LinearEasing),
             label = "Playback position")
-        Slider(value = dragging ?: smoothPosition.coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
-            onValueChange = { dragging = it }, onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
-            valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(), enabled = state.duration > 0,
-            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
-            thumb = { Box(Modifier.size(16.dp).background(Color.White, CircleShape)) },
-            track = { slider ->
-                SliderDefaults.Track(sliderState = slider, modifier = Modifier.height(3.dp),
-                    colors = SliderDefaults.colors(activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
-                    thumbTrackGapSize = 0.dp, drawStopIndicator = null)
-            },
-            modifier = Modifier.semantics { contentDescription = "Playback position" })
+        SquigglySlider(
+            value = dragging ?: smoothPosition.coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
+            onValueChange = { dragging = it },
+            onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
+            valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(),
+            isPlaying = state.playing && state.connected && !state.buffering && state.error == null,
+            enabled = state.duration > 0,
+            activeTrackColor = Color.White,
+            inactiveTrackColor = Color.White.copy(alpha = 0.28f),
+            thumbColor = Color.White,
+            formatTime = ::duration
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Crossfade(duration(dragging?.toLong() ?: state.position), animationSpec = tween(120), label = "Elapsed time") {
                 Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -434,71 +433,6 @@ import kotlin.random.Random
     }
 }
 
-@Composable private fun MusicVolumeControl(onError: (String) -> Unit) {
-    val context = LocalContext.current
-    val audio = remember(context) { context.getSystemService(AudioManager::class.java) }
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val window = (view.parent as? DialogWindowProvider)?.window
-        val previousStream = window?.volumeControlStream
-        window?.volumeControlStream = AudioManager.STREAM_MUSIC
-        onDispose { if (previousStream != null) window.volumeControlStream = previousStream }
-    }
-
-    fun readVolume() = audio.getStreamVolume(AudioManager.STREAM_MUSIC) to
-        audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-
-    // Poll the public API only while visible. This also catches hardware keys and
-    // output-device changes without relying on undocumented volume broadcasts.
-    val volumeChanges = remember(audio) {
-        flow {
-            while (true) {
-                emit(readVolume())
-                delay(250)
-            }
-        }
-    }
-    val observed by volumeChanges.collectAsStateWithLifecycle(initialValue = remember(audio) { readVolume() })
-    var volume by remember(audio) { mutableIntStateOf(observed.first) }
-    val maximum = observed.second.coerceAtLeast(0)
-    var lastAudible by rememberSaveable { mutableIntStateOf(volume.coerceAtLeast(1)) }
-    LaunchedEffect(observed) {
-        volume = observed.first
-        if (volume > 0) lastAudible = volume
-    }
-    val enabled = maximum > 0 && !audio.isVolumeFixed
-    val percentage = if (maximum > 0) (volume * 100f / maximum).roundToInt() else 0
-
-    fun setVolume(value: Int) {
-        try {
-            audio.setStreamVolume(AudioManager.STREAM_MUSIC, value.coerceIn(0, maximum), 0)
-            volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-            if (volume > 0) lastAudible = volume
-        } catch (_: SecurityException) {
-            onError("Media volume could not be changed. Use your device's volume controls.")
-        }
-    }
-
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Action(if (volume == 0) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-            if (volume == 0) "Unmute music" else "Mute music", enabled = enabled) {
-            if (volume > 0) {
-                lastAudible = volume
-                setVolume(0)
-            } else setVolume(lastAudible.coerceIn(1, maximum))
-        }
-        Slider(value = volume.toFloat().coerceIn(0f, maximum.coerceAtLeast(1).toFloat()),
-            onValueChange = { setVolume(it.roundToInt()) }, enabled = enabled,
-            valueRange = 0f..maximum.coerceAtLeast(1).toFloat(),
-            steps = (maximum - 1).coerceAtLeast(0),
-            modifier = Modifier.weight(1f).semantics {
-                contentDescription = "Music volume"
-                stateDescription = "$percentage percent"
-            })
-        Text("$percentage%", style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.widthIn(min = 48.dp).padding(start = 8.dp))
-    }
-}
 @Composable private fun FullScreenSheet(title: String, dismiss: () -> Unit, visible: Boolean = true, showHeader: Boolean = true,
     content: @Composable ColumnScope.() -> Unit) {
     val visibility = remember { MutableTransitionState(false) }
