@@ -56,17 +56,17 @@ import kotlin.random.Random
 
 @Composable fun StillTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(
-        primary = Color(0xFFA4B8A5), onPrimary = Color(0xFF152019),
-        primaryContainer = Color(0xFF303D33).copy(alpha = 0.6f), onPrimaryContainer = Color(0xFFD7E5D7),
-        background = Color.Transparent, onBackground = Color.White,
-        surface = Color.Black.copy(alpha = 0.2f), onSurface = Color.White,
-        surfaceVariant = Color.Black.copy(alpha = 0.4f), onSurfaceVariant = Color(0xFFC2C5C8),
-        surfaceContainer = Color.Black.copy(alpha = 0.3f), surfaceContainerHigh = Color.Black.copy(alpha = 0.5f),
-        surfaceContainerHighest = Color.Black.copy(alpha = 0.7f), outlineVariant = Color.White.copy(alpha = 0.15f),
-        secondaryContainer = Color.Black.copy(alpha = 0.6f), onSecondaryContainer = Color(0xFFD7E5D7),
-        outline = Color.White.copy(alpha = 0.3f)), shapes = Shapes(
-            medium = RoundedCornerShape(24.dp), large = RoundedCornerShape(24.dp),
-            extraLarge = RoundedCornerShape(32.dp)), content = content)
+        primary = Color(0xFFFFFFFF), onPrimary = Color(0xFF000000),
+        primaryContainer = Color(0xFF222222), onPrimaryContainer = Color(0xFFFFFFFF),
+        background = Color(0xFF0A0A0A), onBackground = Color.White,
+        surface = Color(0xFF121212), onSurface = Color.White,
+        surfaceVariant = Color(0xFF1E1E1E), onSurfaceVariant = Color(0xFFB3B3B3),
+        surfaceContainer = Color(0xFF161616), surfaceContainerHigh = Color(0xFF222222),
+        surfaceContainerHighest = Color(0xFF2C2C2C), outlineVariant = Color(0xFF333333),
+        secondaryContainer = Color(0xFF2A2A2A), onSecondaryContainer = Color(0xFFE0E0E0),
+        outline = Color(0xFF444444)), shapes = Shapes(
+            medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(20.dp),
+            extraLarge = RoundedCornerShape(24.dp)), content = content)
 }
 @Composable fun StillScreen(vm: StillViewModel) {
     val search by vm.search.collectAsStateWithLifecycle()
@@ -94,15 +94,15 @@ import kotlin.random.Random
     var naming by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf<Playlist?>(null) }
     var delete by remember { mutableStateOf<Playlist?>(null) }
+    var equalizerOpen by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(playlistId) { vm.selectPlaylist(playlistId) }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.message.value = null } }
     BackHandler(tab == 1 && playlistId != null && !nowPlaying && !queue) { playlistId = null }
     var playerPoster by remember(player.current?.id, player.current?.artwork) { mutableStateOf<Image?>(null) }
     val playerGradient = rememberPlayerGradient(playerPoster)
-    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(playerGradient))) {
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (playlistId == null) {
                 Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 8.dp),
@@ -159,8 +159,6 @@ import kotlin.random.Random
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     trailingIcon = { if (search.query.isNotEmpty()) Action(Icons.Default.Close, "Clear search", onClick = { vm.query("") }) },
                     singleLine = true, shape = RoundedCornerShape(20.dp))
-                Text("YouTube Music · experimental", modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                     if (search.query.isBlank()) item { EmptyState("Find your next favourite", "Search songs by title or artist.", Icons.Default.Search) }
                     if (search.loading && search.tracks.isEmpty()) item { Loading() }
@@ -202,13 +200,20 @@ import kotlin.random.Random
                 if (libraryTab == 3) {
                     DownloadsPanel(downloads, vm)
                 } else if (libraryTab == 1 && selected == null) {
-                    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        item { OutlinedButton(onClick = { naming = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Text("New playlist", Modifier.padding(start = 8.dp)) } }
+                    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        item { OutlinedButton(onClick = { naming = true }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Icon(Icons.Default.Add, null); Text("New playlist", Modifier.padding(start = 8.dp), fontWeight = FontWeight.SemiBold) } }
                         if (playlists.isEmpty()) item { EmptyState("Make a little collection", "Create a playlist, then add tracks from search.", Icons.Default.LibraryMusic) }
                         items(playlists, key = Playlist::id) { list ->
                             var menu by remember { mutableStateOf(false) }
-                            ListItem(headlineContent = { Text(list.name) }, leadingContent = { Icon(Icons.AutoMirrored.Filled.QueueMusic, null) },
-                                trailingContent = { Box {
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable { playlistId = list.id }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha=0.15f)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                                Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                                    Text(list.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("Playlist", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                                }
+                                Box {
                                     Action(Icons.Default.MoreVert, "Playlist options for ${list.name}", onClick = { menu = true })
                                     DropdownMenu(menu, onDismissRequest = { menu = false }) {
                                         DropdownMenuItem(text = { Text("Download playlist") },
@@ -216,8 +221,8 @@ import kotlin.random.Random
                                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; rename = list; naming = true })
                                         DropdownMenuItem(text = { Text("Delete playlist") }, onClick = { menu = false; delete = list })
                                     }
-                                } }, colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { playlistId = list.id })
+                                }
+                            }
                         }
                     }
                 } else {
@@ -265,13 +270,18 @@ import kotlin.random.Random
             }
         }
     }
-    }
     FullScreenSheet("Now playing", { nowPlaying = false }, visible = nowPlaying && player.current != null, showHeader = false, backgroundColors = playerGradient) {
         NowPlaying(player, favourites.any { it.id == player.current?.id }, vm,
             onArtworkLoaded = { playerPoster = it }, onClose = { nowPlaying = false }, onQueue = { queue = true }, onPlaylist = {
                 addTrack = player.current
+                addTrack = player.current
                 nowPlaying = false
             })
+        if (equalizerOpen) {
+            FullScreenSheet("Equalizer", { equalizerOpen = false }, backgroundColors = listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.95f))) {
+                EqualizerPanel(vm.equalizer, onClose = { equalizerOpen = false })
+            }
+        }
     }
     if (queue) FullScreenSheet("Queue", { queue = false }, backgroundColors = listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.95f))) {
         Text(if (player.shuffle) "Shuffle is on. This list shows your editable queue order." else "Plays from top to bottom.",
@@ -360,12 +370,17 @@ import kotlin.random.Random
     val track = state.current ?: return
     var menu by remember(track.id) { mutableStateOf(false) }
     var volumeOpen by rememberSaveable { mutableStateOf(false) }
+    var equalizerOpen by rememberSaveable { mutableStateOf(false) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    val artSize = minOf(maxWidth - 64.dp, 360.dp, maxHeight * 0.46f)
-    val breathingRoom = (maxHeight - artSize - 350.dp).coerceAtLeast(24.dp)
+    val topBarHeight = 64.dp
+    val controlsHeight = 200.dp
+    val textHeight = 90.dp
+    val artSize = minOf(maxWidth - 64.dp, 400.dp, maxHeight - topBarHeight - controlsHeight - textHeight - 32.dp).coerceAtLeast(120.dp)
+    val spacing = ((maxHeight - artSize - topBarHeight - controlsHeight - textHeight) / 4).coerceAtLeast(16.dp)
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(topBarHeight), verticalAlignment = Alignment.CenterVertically) {
             Action(Icons.Default.KeyboardArrowDown, "Close Now playing", onClick = onClose)
             Spacer(Modifier.weight(1f))
             Action(Icons.AutoMirrored.Filled.VolumeUp, "Music volume", onClick = { volumeOpen = !volumeOpen })
@@ -375,23 +390,23 @@ import kotlin.random.Random
                 Action(Icons.Default.MoreVert, "Options for ${track.title}", onClick = { menu = true })
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
+                    DropdownMenuItem(text = { Text("Equalizer") }, onClick = { menu = false; equalizerOpen = true })
                 }
             }
         }
         AnimatedVisibility(volumeOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
             VolumeControlBar(onError = { vm.message.value = it })
         }
-        Artwork(track, Modifier.size(artSize).swipeTracks(track.id, state.connected, vm::previousTrack, vm::next).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp, highQuality = true, onLoaded = onArtworkLoaded)
-        Text("Swipe cover left or right to change songs", Modifier.padding(top = 12.dp),
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(12.dp))
-        Text(track.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
+        Spacer(Modifier.height(spacing))
+        Artwork(track, Modifier.size(artSize).swipeTracks(track.id, state.connected, vm::previousTrack, vm::next).shadow(16.dp, RoundedCornerShape(32.dp)), cornerRadius = 32.dp, highQuality = true, onLoaded = onArtworkLoaded)
+        Spacer(Modifier.height(spacing))
+        Text(track.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
             maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Text(track.artist, style = MaterialTheme.typography.bodyMedium,
+        Text(track.artist, style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp))
-        Spacer(Modifier.height(breathingRoom))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(spacing))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Action(Icons.AutoMirrored.Filled.QueueMusic, "Queue", onClick = onQueue)
             Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 if (favourite) "Remove from favourites" else "Add to favourites",
@@ -424,9 +439,9 @@ import kotlin.random.Random
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             Action(Icons.Default.Shuffle, if (state.shuffle) "Turn shuffle off" else "Turn shuffle on", tint = if (state.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = vm::shuffle)
-            Action(Icons.Default.SkipPrevious, "Previous track", onClick = vm::previous)
-            PlaybackButton(state.playing, state.connected, size = 64.dp, prominent = false, onClick = vm::toggle)
-            Action(Icons.Default.SkipNext, "Next track", onClick = vm::next)
+            Action(Icons.Default.SkipPrevious, "Previous track", size = 64.dp, iconSize = 40.dp, onClick = vm::previous)
+            PlaybackButton(state.playing, state.connected, size = 80.dp, prominent = true, onClick = vm::toggle)
+            Action(Icons.Default.SkipNext, "Next track", size = 64.dp, iconSize = 40.dp, onClick = vm::next)
             Action(if (state.repeat == 1) Icons.Default.RepeatOne else Icons.Default.Repeat,
                 "Repeat ${when (state.repeat) { 1 -> "one"; 2 -> "all"; else -> "off" }}. Change repeat mode",
                 tint = if (state.repeat != 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = vm::repeat)
@@ -487,7 +502,7 @@ import kotlin.random.Random
         AnimatedVisibility(visibleState = visibility,
             enter = slideInVertically(tween(360, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(220)),
             exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(220))) {
-        Surface(Modifier.fillMaxSize(), color = Color.Transparent) {
+        Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = Color.White) {
             Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
                 backgroundColors ?: listOf(Color.Transparent, Color.Transparent)))
                 .safeDrawingPadding().imePadding()) {
@@ -577,9 +592,9 @@ import kotlin.random.Random
 }
 
 @Composable private fun Action(icon: ImageVector, description: String, enabled: Boolean = true,
-    tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
-        Icon(icon, description, tint = if (enabled) tint else MaterialTheme.colorScheme.outline)
+    size: Dp = 48.dp, iconSize: Dp = 24.dp, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.sizeIn(minWidth = size, minHeight = size)) {
+        Icon(icon, description, tint = if (enabled) tint else MaterialTheme.colorScheme.outline, modifier = Modifier.size(iconSize))
     }
 }
 @Composable private fun EmptyState(title: String, detail: String, icon: ImageVector) {

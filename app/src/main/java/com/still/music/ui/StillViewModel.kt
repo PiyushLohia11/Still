@@ -54,7 +54,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
                 if (!force && homeHistoryKey == historyKey && _home.value.tracks.isNotEmpty()) return@launch
                 _home.update { it.copy(loading = true, error = null) }
                 val result = com.still.music.provider.RecommendationLoader(
-                    related = { seed -> (graph.music as? YouTubeProvider)?.getRelatedTracks(seed.id).orEmpty() },
+                    related = { seed -> (graph.music as? YouTubeProvider)?.getRelatedTracks(seed).orEmpty() },
                     search = { query -> graph.music.search(query) }
                 ).load(history, saved)
                 _home.update { it.copy(loading = false, tracks = result.tracks, subtitle = result.subtitle,
@@ -107,6 +107,8 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     val playlistTracks = selectedPlaylist.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else graph.library.tracks(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val equalizer = graph.equalizer
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var searchJob: Job? = null
     private var nextOffset = 0
     private var controller: MediaController? = null
@@ -151,10 +153,11 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         val attempt = seed to ids
         if (radioAttempt == attempt) return
         val provider = graph.providers.forTrack(seed) as? YouTubeProvider ?: return
+        val currentTrack = player.currentMediaItem?.track() ?: return
         radioAttempt = attempt
         radioJob = viewModelScope.launch {
             try {
-                val related = provider.getRelatedTracks(seed)
+                val related = provider.getRelatedTracks(currentTrack)
                 ensureActive()
                 // Discard results if the user replaced, reordered, or extended the queue.
                 if (!_autoPlayRadio.value || controller !== player ||

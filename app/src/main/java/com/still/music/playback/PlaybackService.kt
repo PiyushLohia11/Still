@@ -87,8 +87,16 @@ class PlaybackService : MediaSessionService() {
                     } catch (e: Exception) { Futures.immediateFailedFuture(e) }
                 }
             }).build()
+        if (player.audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+            graph.equalizer.attach(player.audioSessionId)
+        }
 
         player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+                    graph.equalizer.attach(audioSessionId)
+                }
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) audioStarted = true }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_BUFFERING && audioStarted)

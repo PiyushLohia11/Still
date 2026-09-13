@@ -73,20 +73,10 @@ class YouTubeProvider(http: OkHttpClient) : MusicProvider {
         }
     }
 
-    suspend fun getRelatedTracks(trackId: String): List<Track> {
-        val url = watchUrl(trackId)
-        return extract {
-            StreamInfo.getInfo(service, url).relatedItems.orEmpty()
-                .filterIsInstance<StreamInfoItem>()
-                .filter { it.duration > 0 }
-                .mapNotNull { item ->
-                    val id = try { service.streamLHFactory.getId(item.url) }
-                        catch (_: Exception) { return@mapNotNull null }
-                    if (!id.matches(Regex("[A-Za-z0-9_-]{11}"))) return@mapNotNull null
-                    Track("youtube:$id", item.name, item.uploaderName.orEmpty(),
-                        bestArtwork(item.thumbnails), item.duration * 1000)
-                }.filterNot { it.id == trackId }.distinctBy(Track::id).take(30)
-        }
+    suspend fun getRelatedTracks(track: Track): List<Track> {
+        val query = if (track.artist.isNotBlank()) "${track.title} ${track.artist} songs" else "${track.title} music audio"
+        val results = search(query)
+        return results.filterNot { it.id == track.id }.take(30)
     }
 
     override suspend fun resolvePlayback(qualifiedId: String): PlaybackAccess {

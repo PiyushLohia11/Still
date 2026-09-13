@@ -22,6 +22,7 @@ class AppGraph(app: Application) {
     val lyrics = com.still.music.lyrics.LyricsRepository(java.io.File(app.filesDir, "lyrics"), http)
     val downloads = com.still.music.offline.Downloads(app, providers, http)
     val resolver = com.still.music.playback.PlaybackResolver(providers, downloads::localFile)
+    val equalizer = com.still.music.audio.EqualizerManager()
     val database = Room.databaseBuilder(app, StillDatabase::class.java, "still.db").build()
     val library = LibraryRepository(database.library())
     val preferences = Preferences(app)

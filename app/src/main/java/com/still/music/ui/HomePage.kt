@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.still.music.provider.Track
 
@@ -58,12 +59,13 @@ private val homeMixes = listOf(
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (selected != null) IconButton(onClick = vm::closeHomeMix) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Home")
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(selected?.title ?: "Home", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                    Text("MUSIC WITH ROOM TO BREATHE", style = MaterialTheme.typography.labelSmall, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 6.dp))
+                    Text(selected?.title ?: "Home", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                     Text(selected?.detail ?: "Find something that feels like you.",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -118,35 +120,35 @@ private val homeMixes = listOf(
                 }
             }
             item {
-                Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF3E594C), Color(0xFF202F31)))).padding(24.dp)) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFFD7E5D7))
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth().clip(RoundedCornerShape(32.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF3E594C), Color(0xFF152019)))).padding(32.dp)) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFFD7E5D7), modifier = Modifier.size(32.dp))
                     Spacer(Modifier.height(16.dp))
-                    Text("Your kind of music", style = MaterialTheme.typography.headlineSmall)
+                    Text("Your kind of music", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     Text("A fresh mix of your favourites and recent listens.",
-                        Modifier.padding(top = 8.dp, bottom = 16.dp), color = Color(0xFFD7E5D7))
+                        Modifier.padding(top = 8.dp, bottom = 24.dp), color = Color(0xFFD7E5D7))
                     Button(onClick = vm::playSmartMix,
-                        enabled = player.connected && !mixLoading && (favourites.isNotEmpty() || recents.isNotEmpty())) {
+                        enabled = player.connected && !mixLoading && (favourites.isNotEmpty() || recents.isNotEmpty()),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                        modifier = Modifier.height(48.dp)) {
                         Icon(Icons.Default.PlayArrow, null)
-                        Text(if (mixLoading) "Creating mix..." else "Play my mix")
+                        Text(if (mixLoading) "Creating mix..." else "Play my mix", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
                     }
                     if (favourites.isEmpty() && recents.isEmpty()) Text("Play or favourite a few songs to make it yours.",
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                        style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp), color = Color(0xFFD7E5D7).copy(alpha = 0.7f))
                 }
             }
             item {
                 HomeHeading("Made for the moment", "Shuffle picks") { picks = homeMixes.shuffled().take(4) }
-                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(picks, key = HomeMix::title) { mix ->
-                        Column(Modifier.width(170.dp).clip(RoundedCornerShape(24.dp))
-                            .background(Brush.linearGradient(listOf(Color(mix.color), Color(0xFF202729))))
+                        Column(Modifier.width(180.dp).aspectRatio(1f).clip(RoundedCornerShape(24.dp))
+                            .background(Brush.linearGradient(listOf(Color(mix.color), Color(0xFF121212))))
                             .clickable(role = Role.Button, onClickLabel = "Open ${mix.title}") { vm.openHomeMix(mix) }
-                            .padding(18.dp)) {
-                            Icon(Icons.Default.GraphicEq, null, Modifier.size(36.dp))
-                            Spacer(Modifier.height(36.dp))
-                            Text(mix.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-                            Text(mix.detail, style = MaterialTheme.typography.bodySmall, minLines = 2,
-                                modifier = Modifier.padding(top = 6.dp))
+                            .padding(20.dp), verticalArrangement = Arrangement.Bottom) {
+                            Text(mix.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = Color.White)
+                            Text(mix.detail, style = MaterialTheme.typography.labelMedium, minLines = 2,
+                                modifier = Modifier.padding(top = 6.dp), color = Color.White.copy(alpha = 0.8f))
                         }
                     }
                 }
