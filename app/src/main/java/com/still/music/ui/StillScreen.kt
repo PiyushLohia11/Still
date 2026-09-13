@@ -97,7 +97,7 @@ import kotlin.random.Random
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(playlistId) { vm.selectPlaylist(playlistId) }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.message.value = null } }
-    BackHandler(playlistId != null && !nowPlaying && !queue) { playlistId = null }
+    BackHandler(tab == 1 && playlistId != null && !nowPlaying && !queue) { playlistId = null }
     var playerPoster by remember(player.current?.id, player.current?.artwork) { mutableStateOf<Image?>(null) }
     val playerGradient = rememberPlayerGradient(playerPoster)
     Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(playerGradient))) {
@@ -140,7 +140,8 @@ import kotlin.random.Random
                     }
                 }
                 NavigationBar(containerColor = Color.Transparent, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
-                    NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Default.Search, null) }, label = { Text("Search") })
+                    NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Default.Home, null) }, label = { Text("Home") })
+                    NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Default.Search, null) }, label = { Text("Search") })
                     NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.Default.LibraryMusic, null) }, label = { Text("Library") })
                 }
             }
@@ -148,6 +149,9 @@ import kotlin.random.Random
     ) { padding ->
         Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize().imePadding()) {
             if (tab == 0) {
+                HomePage(vm, onPlaylist = { addTrack = it },
+                    onLibraryPlaylist = { playlistId = it; libraryTab = 1; tab = 1 })
+            } else if (tab == 2) {
                 OutlinedTextField(value = search.query, onValueChange = vm::query,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                     label = { Text("Search music") }, placeholder = { Text("Tracks or artists") },
@@ -466,7 +470,7 @@ import kotlin.random.Random
         }
     }
 }
-@Composable private fun TrackRow(track: Track, favourite: Boolean, current: Boolean, onPlay: () -> Unit,
+@Composable internal fun TrackRow(track: Track, favourite: Boolean, current: Boolean, onPlay: () -> Unit,
     onFavourite: () -> Unit, onQueue: () -> Unit, onPlaylist: () -> Unit, onRemove: (() -> Unit)? = null, onDownload: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
@@ -493,7 +497,7 @@ import kotlin.random.Random
         }
     }
 }
-@Composable private fun Artwork(track: Track, modifier: Modifier, cornerRadius: Dp = 20.dp,
+@Composable internal fun Artwork(track: Track, modifier: Modifier, cornerRadius: Dp = 20.dp,
     highQuality: Boolean = false, onLoaded: (Image?) -> Unit = {}) {
     val context = LocalContext.current
     val targetSize = if (highQuality) 1200 else 480

@@ -54,7 +54,8 @@ class PlaybackDeviceTest {
         main { future = MediaController.Builder(app, SessionToken(app, ComponentName(app, PlaybackService::class.java))).buildAsync() }
         val controller = future.get(20, TimeUnit.SECONDS)
         try {
-            compose.onNodeWithText("Search music").performTextInput("Daft Punk Get Lucky")
+            compose.onNodeWithText("Search").performClick()
+        compose.onNodeWithText("Search music").performTextInput("Daft Punk Get Lucky")
             compose.waitUntil(60000) { compose.onAllNodesWithText(track.title).fetchSemanticsNodes().isNotEmpty() }
             compose.onAllNodesWithContentDescription("Options for ${track.title}").onFirst().performClick()
             compose.onNodeWithText("Download for offline").performClick()
@@ -109,6 +110,7 @@ class PlaybackDeviceTest {
         val tracks = runBlocking { app.graph.music.search("Daft Punk Get Lucky").filter { it.playable } }
         assertTrue("Need at least two YouTube Music tracks", tracks.size >= 2)
         val first = tracks.first()
+        compose.onNodeWithText("Search").performClick()
         compose.onNodeWithText("Search music").performTextInput("Daft Punk Get Lucky")
         compose.waitUntil(60000) { compose.onAllNodesWithText(first.title).fetchSemanticsNodes().isNotEmpty() }
         lateinit var future: ListenableFuture<MediaController>

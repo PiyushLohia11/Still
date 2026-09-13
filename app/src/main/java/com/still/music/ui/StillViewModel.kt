@@ -40,6 +40,51 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     val autoPlayRadio = _autoPlayRadio.asStateFlow()
     private var radioJob: Job? = null
     private var radioAttempt: Pair<String, List<String>>? = null
+    private val _home = MutableStateFlow(HomeState())
+    val home = _home.asStateFlow()
+    private var homeJob: Job? = null
+    private var homeHistoryKey: List<String>? = null
+    fun loadHome(force: Boolean = false) {
+        if (homeJob?.isActive == true) return
+        homeJob = viewModelScope.launch {
+            try {
+                val history = graph.library.recents.first()
+                val saved = graph.library.favourites.first()
+                val historyKey = history.take(8).map(Track::id) + listOf("|") + saved.map(Track::id)
+                if (!force && homeHistoryKey == historyKey && _home.value.tracks.isNotEmpty()) return@launch
+                _home.update { it.copy(loading = true, error = null) }
+                val result = com.still.music.provider.RecommendationLoader(
+                    related = { seed -> (graph.music as? YouTubeProvider)?.getRelatedTracks(seed.id).orEmpty() },
+                    search = { query -> graph.music.search(query) }
+                ).load(history, saved)
+                _home.update { it.copy(loading = false, tracks = result.tracks, subtitle = result.subtitle,
+                    error = if (result.tracks.isEmpty()) "No recommendations found. Check your connection and retry." else null) }
+                homeHistoryKey = historyKey
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                _home.update { it.copy(loading = false, error = "Couldn't load recommendations. Check your connection and retry.") }
+            }
+        }
+    }
+    private var homeMixJob: Job? = null
+    fun openHomeMix(mix: HomeMix) {
+        homeMixJob?.cancel()
+        _home.update { it.copy(selectedMix = mix, mixTracks = emptyList(), mixLoading = true, mixError = null) }
+        homeMixJob = viewModelScope.launch {
+            try {
+                val tracks = graph.music.search(mix.query).filter(Track::playable).distinctBy(Track::id).shuffled().take(20)
+                _home.update { it.copy(mixLoading = false, mixTracks = tracks,
+                    mixError = if (tracks.isEmpty()) "No songs found for this mix. Try again." else null) }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                _home.update { it.copy(mixLoading = false, mixError = "Couldn't load this mix. Check your connection and retry.") }
+            }
+        }
+    }
+    fun closeHomeMix() {
+        homeMixJob?.cancel()
+        _home.update { it.copy(selectedMix = null, mixLoading = false) }
+    }
     private val _search = MutableStateFlow(SearchState())
     val search = _search.asStateFlow()
     private val _playback = MutableStateFlow(PlaybackState())
