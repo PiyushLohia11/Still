@@ -121,7 +121,7 @@ import kotlin.random.Random
                         shape = RoundedCornerShape(32.dp), shadowElevation = 0.dp,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Open Now Playing") { nowPlaying = true }.padding(10.dp),
+                        Row(Modifier.fillMaxWidth().swipeTracks(current.id, player.connected, vm::previousTrack, vm::next).clickable(role = Role.Button, onClickLabel = "Open Now Playing") { nowPlaying = true }.padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Artwork(current, Modifier.size(48.dp).clip(CircleShape), cornerRadius = 24.dp)
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -352,8 +352,10 @@ import kotlin.random.Random
         AnimatedVisibility(volumeOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
             VolumeControlBar(onError = { vm.message.value = it })
         }
-        Artwork(track, Modifier.size(artSize).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp, highQuality = true, onLoaded = onArtworkLoaded)
-        Spacer(Modifier.height(24.dp))
+        Artwork(track, Modifier.size(artSize).swipeTracks(track.id, state.connected, vm::previousTrack, vm::next).shadow(12.dp, RoundedCornerShape(28.dp)), cornerRadius = 28.dp, highQuality = true, onLoaded = onArtworkLoaded)
+        Text("Swipe cover left or right to change songs", Modifier.padding(top = 12.dp),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(12.dp))
         Text(track.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
             maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Text(track.artist, style = MaterialTheme.typography.bodyMedium,

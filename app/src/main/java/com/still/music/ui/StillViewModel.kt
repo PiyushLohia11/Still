@@ -227,6 +227,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun next() = act { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
     fun previous() = act { it.seekToPrevious() }
+    fun previousTrack() = act { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() }
     fun seek(position: Long) = act { it.seekTo(position.coerceAtLeast(0)) }
     fun shuffle() = act { it.shuffleModeEnabled = !it.shuffleModeEnabled }
     fun repeat() = act { it.repeatMode = QueueRules.nextRepeat(it.repeatMode) }
