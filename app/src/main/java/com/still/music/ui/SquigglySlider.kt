@@ -66,7 +66,7 @@ fun SquigglySlider(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            animation = tween(durationMillis = 4800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "WavePhase"

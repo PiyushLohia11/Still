@@ -11,17 +11,33 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.still.music.lyrics.LrcParser
 import com.still.music.offline.SavedDownload
 import com.still.music.provider.Track
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+
 @Composable fun DownloadButton(track: Track, vm: StillViewModel) {
     val downloads by vm.downloads.collectAsStateWithLifecycle()
     val entry = downloads.firstOrNull { it.track.id == track.id }
-    TextButton(onClick = { if (entry?.active == true) vm.cancelDownload(track.id) else vm.download(track) },
-        enabled = entry?.ready != true) {
-        Text(when { entry?.ready == true -> "Downloaded"; entry?.active == true -> "Cancel download"; else -> "Download" })
+    val icon = when {
+        entry?.ready == true -> Icons.Default.DownloadDone
+        entry?.active == true -> Icons.Default.Close
+        else -> Icons.Default.Download
+    }
+    val contentDesc = when {
+        entry?.ready == true -> "Downloaded"
+        entry?.active == true -> "Cancel download"
+        else -> "Download"
+    }
+    IconButton(
+        onClick = { if (entry?.active == true) vm.cancelDownload(track.id) else vm.download(track) },
+        enabled = entry?.ready != true
+    ) {
+        Icon(icon, contentDescription = contentDesc)
     }
     if (entry?.active == true) Text(entry.status, style = MaterialTheme.typography.labelSmall)
 }
@@ -73,20 +89,22 @@ import com.still.music.provider.Track
     val state by vm.lyrics.collectAsStateWithLifecycle()
     LaunchedEffect(track.id) { vm.loadLyrics(track) }
     val lyrics = state.takeIf { it.trackId == track.id }
-    Surface(Modifier.fillMaxWidth().padding(top = 16.dp), shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 2.dp) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Lyrics", style = MaterialTheme.typography.titleLarge)
-        Text("LRCLIB", style = MaterialTheme.typography.labelSmall)
+    
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Lyrics", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Text("LRCLIB", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        
         when {
             lyrics == null || lyrics.loading -> CircularProgressIndicator(Modifier.padding(16.dp).size(24.dp))
             lyrics.error != null -> {
-                Text(lyrics.error)
+                Text(lyrics.error, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = { vm.loadLyrics(track, true) }) { Text("Retry lyrics") }
             }
-            lyrics.value?.instrumental == true -> Text("Instrumental - no lyrics.")
+            lyrics.value?.instrumental == true -> Text("Instrumental - no lyrics.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             lyrics.value == null || (lyrics.value.plain.isBlank() && lyrics.value.lines.isEmpty()) -> {
-                Text("No lyrics found for this recording.")
+                Text("No lyrics found for this recording.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = { vm.loadLyrics(track, true) }) { Text("Check again") }
             }
             lyrics.value.lines.isNotEmpty() -> {
@@ -94,21 +112,26 @@ import com.still.music.provider.Track
                 val active = LrcParser.active(lines, position)
                 val listState = rememberLazyListState()
                 LaunchedEffect(active, track.id) { if (active >= 0) listState.animateScrollToItem((active - 1).coerceAtLeast(0)) }
-                LazyColumn(Modifier.fillMaxWidth().height(300.dp), state = listState) {
+                LazyColumn(Modifier.fillMaxWidth().height(450.dp), state = listState, contentPadding = PaddingValues(vertical = 16.dp)) {
                     itemsIndexed(lines) { index, line ->
+                        val isActive = index == active
                         val lyricColor by animateColorAsState(
-                            if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            animationSpec = tween(250), label = "Active lyric")
-                        Text(line.text.ifBlank { "..." }, style = MaterialTheme.typography.titleMedium,
+                            if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                            animationSpec = tween(300), label = "Active lyric color"
+                        )
+                        Text(
+                            text = line.text.ifBlank { "..." },
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium,
                             color = lyricColor,
                             modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Seek to lyric") {
                                 vm.seek(line.timeMs)
-                            }.padding(vertical = 10.dp))
+                            }.padding(vertical = 12.dp)
+                        )
                     }
                 }
             }
-            else -> Text(lyrics.value.plain, Modifier.padding(vertical = 12.dp))
+            else -> Text(lyrics.value.plain, Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
     }
 }
