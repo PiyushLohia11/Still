@@ -317,7 +317,6 @@ import kotlin.random.Random
     val track = state.current ?: return
     var menu by remember(track.id) { mutableStateOf(false) }
     var volumeOpen by rememberSaveable { mutableStateOf(false) }
-    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val artSize = minOf(maxWidth - 64.dp, 360.dp, maxHeight * 0.46f)
     val breathingRoom = (maxHeight - artSize - 350.dp).coerceAtLeast(24.dp)
@@ -333,8 +332,6 @@ import kotlin.random.Random
                 Action(Icons.Default.MoreVert, "Options for ${track.title}", onClick = { menu = true })
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
-                    DropdownMenuItem(text = { Text("Download") }, onClick = { menu = false; vm.download(track) })
-                    DropdownMenuItem(text = { Text("Lyrics") }, onClick = { menu = false; lyricsOpen = !lyricsOpen })
                 }
             }
         }
@@ -349,13 +346,13 @@ import kotlin.random.Random
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(breathingRoom))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Action(Icons.AutoMirrored.Filled.QueueMusic, "Queue", onClick = onQueue)
             Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 if (favourite) "Remove from favourites" else "Add to favourites",
                 tint = if (favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 onClick = { vm.favourite(track) })
-            Action(Icons.Default.Add, "Add to playlist", onClick = onPlaylist)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) { DownloadButton(track, vm) }
         }
         Spacer(Modifier.height(8.dp))
         var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
@@ -392,7 +389,7 @@ import kotlin.random.Random
         }
         if (state.buffering) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Connecting to music…", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall) }
         state.error?.let { ErrorState(it, vm::toggle) }
-        AnimatedVisibility(lyricsOpen) { LyricsPanel(track, state.position, vm) }
+        LyricsPanel(track, state.position, vm)
         Spacer(Modifier.height(16.dp))
     }
     }
