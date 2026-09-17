@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -18,6 +20,7 @@ internal fun Modifier.swipeTracks(trackId: String, enabled: Boolean,
     onPrevious: () -> Unit, onNext: () -> Unit): Modifier = composed {
     val previous by rememberUpdatedState(onPrevious)
     val next by rememberUpdatedState(onNext)
+    val haptic = LocalHapticFeedback.current
     val threshold = with(LocalDensity.current) { 64.dp.toPx() }
     var distance by remember(trackId) { mutableFloatStateOf(0f) }
     val offset by animateFloatAsState(distance * 0.25f, label = "Song swipe")
@@ -39,7 +42,10 @@ internal fun Modifier.swipeTracks(trackId: String, enabled: Boolean,
                 },
                 onHorizontalDrag = { change, amount ->
                     change.consume()
-                    distance += amount
+                    val before = kotlin.math.abs(distance) >= threshold
+                    distance = (distance + amount).coerceIn(-threshold * 2f, threshold * 2f)
+                    if (!before && kotlin.math.abs(distance) >= threshold)
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 })
         }
 }

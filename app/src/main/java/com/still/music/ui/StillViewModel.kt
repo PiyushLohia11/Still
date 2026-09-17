@@ -105,7 +105,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     private val selectedPlaylist = MutableStateFlow<Long?>(null)
     @OptIn(ExperimentalCoroutinesApi::class)
     val playlistTracks = selectedPlaylist.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else graph.library.tracks(id)
+        if (id == null) flowOf(emptyList()) else graph.library.tracks(id).onStart { emit(emptyList()) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val equalizer = graph.equalizer
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -250,7 +250,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         if (!track.playable) { message.value = track.unavailableReason; return }
         act {
             if (it.mediaItemCount >= QueueRules.MAX_SIZE) message.value = "Queue is full (300 tracks)."
-            else it.addMediaItem(track.mediaItem())
+            else { it.addMediaItem(track.mediaItem()); message.value = "Added to queue" }
         }
     }
     fun remove(index: Int) = act { if (index in 0 until it.mediaItemCount) it.removeMediaItem(index) }

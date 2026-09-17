@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.*
 
 @Composable fun DownloadsPanel(entries: List<SavedDownload>, vm: StillViewModel) {
     var removing by remember { mutableStateOf<SavedDownload?>(null) }
+    val favourites by vm.favourites.collectAsStateWithLifecycle()
     val playable = entries.filter { it.ready }.map { it.track }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -54,6 +55,8 @@ import androidx.compose.material.icons.filled.*
         }
         if (entries.isEmpty()) item { Text("Choose Download from a song's options or Now Playing.") }
         items(entries, key = { it.track.id }) { entry ->
+            SwipeActions(entry.track.id, "Queue", if (favourites.any { it.id == entry.track.id }) "Unfavourite" else "Favourite",
+                onRight = { vm.enqueue(entry.track) }, onLeft = { vm.favourite(entry.track) }, enabled = entry.ready) {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
@@ -76,6 +79,7 @@ import androidx.compose.material.icons.filled.*
                 }
             }
         }
+    }
     }
     removing?.let { entry ->
         AlertDialog(onDismissRequest = { removing = null }, shape = RoundedCornerShape(20.dp), title = { Text("Remove download?") },

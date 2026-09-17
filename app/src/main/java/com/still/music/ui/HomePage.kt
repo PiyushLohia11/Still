@@ -64,9 +64,8 @@ private val homeMixes = listOf(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Home")
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("MUSIC WITH ROOM TO BREATHE", style = MaterialTheme.typography.labelSmall, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 6.dp))
-                    Text(selected?.title ?: "Home", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text(selected?.detail ?: "Find something that feels like you.",
+                    Text(selected?.title ?: "Listen a little.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                    Text(selected?.detail ?: "Your music. Your pace.",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -94,6 +93,22 @@ private val homeMixes = listOf(
                     { onPlaylist(track) }, onDownload = { vm.download(track) })
             }
         } else {
+            if (recents.isNotEmpty()) {
+                item { Text("Recently played", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.titleLarge) }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(recents.take(10), key = Track::id) { track ->
+                            Column(Modifier.width(140.dp).clip(RoundedCornerShape(20.dp))
+                                .clickable(role = Role.Button, onClickLabel = "Play ${track.title}") { vm.play(track, recents) }) {
+                                Artwork(track, Modifier.size(140.dp))
+                                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 HomeHeading("Recommended for you", if (home.loading) "Loading..." else "Refresh", !home.loading) { vm.loadHome(true) }
                 Text(home.subtitle, Modifier.padding(horizontal = 20.dp),
@@ -120,13 +135,13 @@ private val homeMixes = listOf(
                 }
             }
             item {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth().clip(RoundedCornerShape(32.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF3E594C), Color(0xFF152019)))).padding(32.dp)) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFFD7E5D7), modifier = Modifier.size(32.dp))
-                    Spacer(Modifier.height(16.dp))
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF3E594C), Color(0xFF152019)))).padding(20.dp)) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFFD7E5D7), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text("Your kind of music", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     Text("A fresh mix of your favourites and recent listens.",
-                        Modifier.padding(top = 8.dp, bottom = 24.dp), color = Color(0xFFD7E5D7))
+                        Modifier.padding(top = 8.dp, bottom = 12.dp), color = Color(0xFFD7E5D7))
                     Button(onClick = vm::playSmartMix,
                         enabled = player.connected && !mixLoading && (favourites.isNotEmpty() || recents.isNotEmpty()),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
@@ -142,29 +157,13 @@ private val homeMixes = listOf(
                 HomeHeading("Made for the moment", "Shuffle picks") { picks = homeMixes.shuffled().take(4) }
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(picks, key = HomeMix::title) { mix ->
-                        Column(Modifier.width(180.dp).aspectRatio(1f).clip(RoundedCornerShape(24.dp))
+                        Column(Modifier.width(164.dp).height(128.dp).clip(RoundedCornerShape(24.dp))
                             .background(Brush.linearGradient(listOf(Color(mix.color), Color(0xFF121212))))
                             .clickable(role = Role.Button, onClickLabel = "Open ${mix.title}") { vm.openHomeMix(mix) }
                             .padding(20.dp), verticalArrangement = Arrangement.Bottom) {
                             Text(mix.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = Color.White)
                             Text(mix.detail, style = MaterialTheme.typography.labelMedium, minLines = 2,
                                 modifier = Modifier.padding(top = 6.dp), color = Color.White.copy(alpha = 0.8f))
-                        }
-                    }
-                }
-            }
-            if (recents.isNotEmpty()) {
-                item { Text("Recently played", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.titleLarge) }
-                item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(recents.take(10), key = Track::id) { track ->
-                            Column(Modifier.width(140.dp).clip(RoundedCornerShape(20.dp))
-                                .clickable(role = Role.Button, onClickLabel = "Play ${track.title}") { vm.play(track, recents) }) {
-                                Artwork(track, Modifier.size(140.dp))
-                                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
                         }
                     }
                 }
@@ -203,9 +202,9 @@ private val homeMixes = listOf(
     onPlay: () -> Unit, onFavourite: () -> Unit, onQueue: () -> Unit, onPlaylist: () -> Unit,
     onDownload: () -> Unit) {
     var menu by remember(track.id) { mutableStateOf(false) }
-    Column(Modifier.width(200.dp).clip(RoundedCornerShape(24.dp))
+    Column(Modifier.width(160.dp).clip(RoundedCornerShape(24.dp))
         .background(MaterialTheme.colorScheme.surfaceVariant)) {
-        Box(Modifier.size(200.dp).clickable(role = Role.Button, onClickLabel = "Play " + track.title, onClick = onPlay)) {
+        Box(Modifier.size(160.dp).clickable(role = Role.Button, onClickLabel = "Play " + track.title, onClick = onPlay)) {
             Artwork(track, Modifier.fillMaxSize(), cornerRadius = 24.dp)
             FilledIconButton(onClick = onPlay, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)) {
                 Icon(Icons.Default.PlayArrow, "Play " + track.title)
