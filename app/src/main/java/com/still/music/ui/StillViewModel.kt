@@ -21,10 +21,14 @@ data class LyricsState(val trackId: String = "", val loading: Boolean = false,
 
 data class PlaylistImportState(val running: Boolean = false, val total: Int = 0,
     val processed: Int = 0, val imported: Int = 0, val playlistId: Long? = null,
-    val error: String? = null, val notice: String? = null)
+    val error: String? = null, val notice: String? = null, val reading: Boolean = false,
+    val entries: List<PlaylistImporter.Entry> = emptyList(), val remaining: Int = 0,
+    val unmatched: Int = 0, val duplicates: Int = 0, val stopped: Boolean = false)
 
 data class SearchState(val query: String = "", val tracks: List<Track> = emptyList(), val loading: Boolean = false,
     val error: String? = null, val more: Boolean = false)
+data class PlaylistContent(val id: Long? = null, val tracks: List<Track> = emptyList(),
+    val loading: Boolean = false, val error: String? = null)
 data class PlaybackState(val queue: List<Track> = emptyList(), val index: Int = 0, val playing: Boolean = false,
     val buffering: Boolean = false, val duration: Long = 0, val shuffle: Boolean = false,
     val repeat: Int = 0, val error: String? = null, val connected: Boolean = false) {
@@ -35,6 +39,14 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     private val _playlistImport = MutableStateFlow(PlaylistImportState())
     val playlistImport = _playlistImport.asStateFlow()
     private var importJob: Job? = null
+    private var importPending = emptyList<IndexedValue<PlaylistImporter.Entry>>()
+    private val importFailures = mutableListOf<IndexedValue<PlaylistImporter.Entry>>()
+    private val importer = PlaylistImporter(graph.music)
+    val importInput = MutableStateFlow("")
+    val importName = MutableStateFlow("")
+    private val searchRadio = SearchRadio(viewModelScope) { seed ->
+        (graph.providers.forTrack(seed.id) as? YouTubeProvider)?.getRelatedTracks(seed).orEmpty()
+    }
     private val radioPreferences = app.getSharedPreferences("auto_radio", android.content.Context.MODE_PRIVATE)
     private val _autoPlayRadio = MutableStateFlow(radioPreferences.getBoolean("enabled", true))
     val autoPlayRadio = _autoPlayRadio.asStateFlow()
@@ -104,9 +116,12 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     val mixLoading = _mixLoading.asStateFlow()
     private val selectedPlaylist = MutableStateFlow<Long?>(null)
     @OptIn(ExperimentalCoroutinesApi::class)
-    val playlistTracks = selectedPlaylist.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else graph.library.tracks(id).onStart { emit(emptyList()) }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val playlistContent = selectedPlaylist.flatMapLatest { id ->
+        if (id == null) flowOf(PlaylistContent()) else graph.library.tracks(id)
+            .map { PlaylistContent(id, it) }
+            .onStart { emit(PlaylistContent(id, loading = true)) }
+            .catch { emit(PlaylistContent(id, error = "Could not open this playlist. Return to your library and try again.")) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlaylistContent())
     val equalizer = graph.equalizer
     private var searchJob: Job? = null
     private var nextOffset = 0
@@ -141,7 +156,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun continueRadio(player: MediaController) {
-        if (!_autoPlayRadio.value || !graph.playbackReady.value || !player.playWhenReady ||
+        if (searchRadio.loading || !_autoPlayRadio.value || !graph.playbackReady.value || !player.playWhenReady ||
             player.playerError != null || player.repeatMode != Player.REPEAT_MODE_OFF ||
             player.playbackState !in listOf(Player.STATE_READY, Player.STATE_ENDED) ||
             player.mediaItemCount >= QueueRules.MAX_SIZE || radioJob?.isActive == true) return
@@ -198,10 +213,13 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch { performSearch(search.value.query, true) }
     }
     private suspend fun performSearch(query: String, append: Boolean) {
+        if (query.isBlank()) return
         _search.update { it.copy(loading = true, error = null) }
         try {
             val offset = if (append) nextOffset else 0
             val found = graph.music.search(query, offset)
+            currentCoroutineContext().ensureActive()
+            if (_search.value.query != query) return
             nextOffset = offset + found.size
             _search.update { it.copy(loading = false, tracks = (if (append) it.tracks + found else found).distinctBy(Track::id), more = found.size == 30) }
         } catch (e: CancellationException) { throw e }
@@ -215,17 +233,44 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun play(track: Track, tracks: List<Track>) {
         if (!track.playable) { message.value = track.unavailableReason; return }
-        val queue = tracks.filter(Track::playable).distinctBy(Track::id).take(QueueRules.MAX_SIZE)
+        val playable = tracks.filter(Track::playable).distinctBy(Track::id)
+        val selected = playable.indexOfFirst { it.id == track.id }
+        val queue = if (selected >= QueueRules.MAX_SIZE) playable.drop(selected).take(QueueRules.MAX_SIZE)
+            else playable.take(QueueRules.MAX_SIZE)
         val index = queue.indexOfFirst { it.id == track.id }
         if (index < 0) { message.value = "Queue is full. Play this track from search."; return }
         radioJob?.cancel(); radioJob = null; radioAttempt = null
-        act { it.setMediaItems(queue.map(Track::mediaItem), index, 0); it.prepare(); it.play() }
+        searchRadio.cancel()
+        act { it.shuffleModeEnabled = false; it.setMediaItems(queue.map(Track::mediaItem), index, 0); it.prepare(); it.play() }
+    }
+    fun playSearch(track: Track) {
+        if (!track.playable) { message.value = track.unavailableReason; return }
+        act { player ->
+            radioJob?.cancel(); radioJob = null
+            radioAttempt = track.id to listOf(track.id)
+            // Mark recommendation loading before setting the timeline, which emits player events.
+            searchRadio.start(track, deliver = { recommendations ->
+                if (controller === player && player.currentMediaItem?.mediaId == track.id &&
+                    player.mediaItemCount == 1) {
+                    val ended = player.playbackState == Player.STATE_ENDED
+                    player.addMediaItems(recommendations.map(Track::mediaItem))
+                    if (ended && player.playWhenReady && recommendations.isNotEmpty()) {
+                        player.seekToDefaultPosition(1); player.prepare()
+                    }
+                    if (recommendations.isEmpty()) message.value = "No recommendations found. Add songs from their options menu."
+                }
+            }, failed = { message.value = "Recommendations unavailable. Your selected song stays in the queue." })
+            player.shuffleModeEnabled = false
+            player.setMediaItems(listOf(track.mediaItem()), 0, 0)
+            player.prepare(); player.play()
+        }
     }
     fun playShuffled(tracks: List<Track>) {
         val playable = tracks.filter(Track::playable).distinctBy(Track::id).take(QueueRules.MAX_SIZE)
         if (playable.isEmpty()) return
         val startIndex = playable.indices.random()
         radioJob?.cancel(); radioJob = null; radioAttempt = null
+        searchRadio.cancel()
         act { 
             it.setMediaItems(playable.map(Track::mediaItem), startIndex, 0)
             it.shuffleModeEnabled = true
@@ -249,12 +294,13 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
     fun enqueue(track: Track) {
         if (!track.playable) { message.value = track.unavailableReason; return }
         act {
+            searchRadio.cancel()
             if (it.mediaItemCount >= QueueRules.MAX_SIZE) message.value = "Queue is full (300 tracks)."
             else { it.addMediaItem(track.mediaItem()); message.value = "Added to queue" }
         }
     }
-    fun remove(index: Int) = act { if (index in 0 until it.mediaItemCount) it.removeMediaItem(index) }
-    fun move(from: Int, to: Int) = act { if (QueueRules.canMove(it.mediaItemCount, from, to)) it.moveMediaItem(from, to) }
+    fun remove(index: Int) = act { searchRadio.cancel(); if (index in 0 until it.mediaItemCount) it.removeMediaItem(index) }
+    fun move(from: Int, to: Int) = act { searchRadio.cancel(); if (QueueRules.canMove(it.mediaItemCount, from, to)) it.moveMediaItem(from, to) }
     fun jump(index: Int) = act {
         if (index in 0 until it.mediaItemCount) { it.seekToDefaultPosition(index); it.prepare(); it.play() }
     }
@@ -272,6 +318,7 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
                 if (mix.isEmpty()) {
                     message.value = "Listen to a few songs or add favourites to build your mix."
                 } else act { player ->
+                    searchRadio.cancel()
                     radioJob?.cancel(); radioJob = null; radioAttempt = null
                     player.shuffleModeEnabled = false
                     player.setMediaItems(mix.map(Track::mediaItem), 0, 0)
@@ -284,44 +331,103 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun selectPlaylist(id: Long?) { selectedPlaylist.value = id }
-    fun importPlaylist(name: String, rawInput: String) {
-        if (_playlistImport.value.running) return
-        if (name.isBlank() || rawInput.isBlank()) {
-            message.value = "Enter a playlist name and paste a URL or song list."
-            return
-        }
-        _playlistImport.value = PlaylistImportState(running = true)
-        importJob = viewModelScope.launch(Dispatchers.IO) {
+    fun resetPlaylistImport() {
+        if (_playlistImport.value.running || _playlistImport.value.reading) return
+        importPending = emptyList()
+        importFailures.clear()
+        _playlistImport.value = PlaylistImportState()
+    }
+    fun readImportFile(uri: android.net.Uri) {
+        if (_playlistImport.value.running || _playlistImport.value.reading) return
+        resetPlaylistImport()
+        _playlistImport.update { it.copy(reading = true) }
+        importJob = viewModelScope.launch {
             try {
-                val importer = PlaylistImporter(graph.music)
-                val entries = importer.read(rawInput)
-                require(entries.isNotEmpty()) { "No songs were found in this input." }
-                val id = graph.library.create(name)
-                _playlistImport.update { it.copy(total = entries.size, playlistId = id, notice = importer.notice) }
-                val importedIds = hashSetOf<String>()
-                entries.forEachIndexed { index, entry ->
-                    ensureActive()
-                    val track = importer.match(entry)
-                    if (track != null && track.id !in importedIds) {
-                        graph.library.add(id, track)
-                        importedIds.add(track.id)
-                    }
-                    _playlistImport.update { it.copy(processed = index + 1, imported = importedIds.size) }
-                    if (entry.sourceTrack == null && index < entries.lastIndex) delay(500)
+                val text = withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
+                        val output = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (output.size() <= PlaylistImporter.MAX_INPUT_BYTES) {
+                            ensureActive()
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                        val bytes = output.toByteArray()
+                        require(bytes.size <= PlaylistImporter.MAX_INPUT_BYTES) { "Choose a file smaller than 2 MB." }
+                        val charset = when {
+                            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() -> Charsets.UTF_16LE
+                            bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() -> Charsets.UTF_16BE
+                            else -> Charsets.UTF_8
+                        }
+                        bytes.toString(charset).removePrefix("\uFEFF").also {
+                            require('\u0000' !in it) { "Choose a text or CSV export, not a spreadsheet or audio file." }
+                        }
+                    } ?: error("This file could not be opened. Choose it again.")
                 }
-                val state = _playlistImport.value
-                message.value = "Imported ${state.imported} of ${state.total}. ${state.total - state.imported} unmatched, failed, or duplicate songs skipped."
+                importInput.value = text
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) {
-                val error = e.message ?: "Import failed. Already imported songs are saved."
-                _playlistImport.update { it.copy(error = error) }
-                message.value = error
+            catch (e: Exception) { _playlistImport.update { it.copy(error = e.message ?: "Could not read this file.") } }
+            finally { _playlistImport.update { it.copy(reading = false) } }
+        }
+    }
+    fun previewPlaylistImport() {
+        if (_playlistImport.value.running || _playlistImport.value.reading || importInput.value.isBlank()) return
+        _playlistImport.value = PlaylistImportState(reading = true)
+        importJob = viewModelScope.launch {
+            try {
+                val entries = importer.read(importInput.value)
+                ensureActive()
+                require(entries.isNotEmpty()) { "No songs found. Check the link or song list." }
+                importPending = entries.withIndex().toList()
+                importFailures.clear()
+                _playlistImport.value = PlaylistImportState(total = entries.size, entries = entries,
+                    remaining = entries.size, notice = importer.notice)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _playlistImport.update { it.copy(error = e.message ?: "Could not read this playlist.") } }
+            finally { _playlistImport.update { it.copy(reading = false) } }
+        }
+    }
+    fun importPlaylist() {
+        if (_playlistImport.value.running || _playlistImport.value.reading || importName.value.isBlank()) return
+        if (importPending.isEmpty()) {
+            importPending = importFailures.sortedBy { it.index }.toList()
+            importFailures.clear()
+        }
+        if (importPending.isEmpty()) return
+        _playlistImport.update { it.copy(running = true, error = null, stopped = false, remaining = importPending.size) }
+        importJob = viewModelScope.launch {
+            try {
+                val id = _playlistImport.value.playlistId ?: graph.library.create(importName.value).also { id ->
+                    _playlistImport.update { it.copy(playlistId = id) }
+                }
+                val savedIds = graph.library.tracks(id).first().mapTo(hashSetOf(), Track::id)
+                com.still.music.provider.ImportRunner(importer::match).run(importPending.toList()) { matched, failed ->
+                    val completed = matched.map { it.first }.toSet() + failed.map { it.index }
+                    val additions = matched.filter { it.second.id !in savedIds }.distinctBy { it.second.id }
+                    // Once a transaction commits, record its progress even if Stop was tapped during the write.
+                    withContext(NonCancellable) {
+                        graph.library.importBatch(id, additions)
+                        savedIds.addAll(additions.map { it.second.id })
+                        importFailures.addAll(failed)
+                        importPending = importPending.filterNot { it.index in completed }
+                        _playlistImport.update { it.copy(imported = savedIds.size,
+                            processed = it.total - importPending.size, remaining = importPending.size,
+                            unmatched = importFailures.size, duplicates = it.duplicates + matched.size - additions.size) }
+                    }
+                }
+                message.value = "Imported ${savedIds.size} songs."
+            } catch (e: CancellationException) {
+                _playlistImport.update { it.copy(stopped = true) }
+                throw e
+            } catch (e: Exception) {
+                _playlistImport.update { it.copy(error = e.message ?: "Import failed. Saved songs are kept.") }
             } finally { _playlistImport.update { it.copy(running = false) } }
         }
     }
     fun cancelPlaylistImport() {
         importJob?.cancel()
-        message.value = "Import stopped. Already imported songs are saved."
+        message.value = "Import stopped. Saved songs are kept; resume any time while Still is open."
     }
     fun createPlaylist(name: String, track: Track? = null) = library {
         val id = graph.library.create(name)

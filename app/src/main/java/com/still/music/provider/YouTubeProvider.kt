@@ -74,9 +74,20 @@ class YouTubeProvider(http: OkHttpClient) : MusicProvider {
     }
 
     suspend fun getRelatedTracks(track: Track): List<Track> {
-        val query = if (track.artist.isNotBlank()) "${track.title} ${track.artist} songs" else "${track.title} music audio"
-        val results = search(query)
-        return results.filterNot { it.id == track.id }.take(30)
+        val related = try {
+            extract {
+                StreamInfo.getInfo(service, watchUrl(track.id)).relatedItems.orEmpty()
+                    .filterIsInstance<StreamInfoItem>().map { item ->
+                        Track("youtube:" + service.streamLHFactory.getId(item.url), item.name,
+                            item.uploaderName.orEmpty(), bestArtwork(item.thumbnails),
+                            (item.duration * 1000).coerceAtLeast(0))
+                    }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { emptyList() }
+        val pool = if (related.isNotEmpty()) related else search(
+            track.artist.takeIf(String::isNotBlank)?.let { "$it songs" } ?: "${track.title} music")
+        return pool.filter { it.playable && it.id != track.id }.distinctBy(Track::id).take(30)
     }
 
     override suspend fun resolvePlayback(qualifiedId: String): PlaybackAccess {

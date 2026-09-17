@@ -21,9 +21,14 @@ class PlaylistImporter(private val youtube: MusicProvider,
     data class Entry(val title: String, val artist: String = "", val sourceTrack: Track? = null)
     var notice: String? = null
         private set
+    companion object {
+        const val MAX_INPUT_BYTES = 2 * 1024 * 1024
+        const val MAX_ENTRIES = 2000
+    }
 
     suspend fun read(rawInput: String): List<Entry> = withContext(Dispatchers.IO) {
-        val input = rawInput.trim().removePrefix("\uFEFF")
+        require(rawInput.toByteArray(Charsets.UTF_8).size <= MAX_INPUT_BYTES) { "Choose a text or CSV file smaller than 2 MB." }
+        val input = rawInput.trim().removePrefix("\uFEFF").trim()
         notice = null
         require(input.isNotBlank()) { "Paste a Spotify or YouTube playlist link." }
         if (input.startsWith("https://") || input.startsWith("http://")) {
@@ -34,7 +39,7 @@ class PlaylistImporter(private val youtube: MusicProvider,
                 val id = spotifyPlaylistId(resolved)
                 val entries = parseSpotifyPage(fetchSpotify("https://open.spotify.com/embed/playlist/$id?utm_source=generator"))
                 notice = "Spotify imports the songs exposed by its public preview; large playlists may be incomplete."
-                return@withContext entries
+                return@withContext entries.take(MAX_ENTRIES)
             }
             require(url.host in setOf("youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com", "youtu.be")) {
                 "Paste a Spotify or YouTube playlist link, or a text/CSV song list."
@@ -46,13 +51,15 @@ class PlaylistImporter(private val youtube: MusicProvider,
             val info = PlaylistInfo.getInfo(service, playlistUrl)
             val items = info.relatedItems.toMutableList()
             var next = info.nextPage
-            while (Page.isValid(next)) {
+            var pages = 0
+            while (Page.isValid(next) && items.size < MAX_ENTRIES && pages++ < 40) {
                 coroutineContext.ensureActive()
                 val page = PlaylistInfo.getMoreItems(service, playlistUrl, next)
                 items.addAll(page.items)
                 next = page.nextPage
             }
-            items.filter { it.name.isNotBlank() && it.name !in listOf("[Deleted video]", "[Private video]") }
+            if (Page.isValid(next) || items.size > MAX_ENTRIES) notice = "This import is limited to the first $MAX_ENTRIES songs."
+            items.take(MAX_ENTRIES).filter { it.name.isNotBlank() && it.name !in listOf("[Deleted video]", "[Private video]") }
                 .mapNotNull { item ->
                     val videoId = try { service.streamLHFactory.getId(item.url) }
                         catch (_: Exception) { return@mapNotNull null }
@@ -60,7 +67,7 @@ class PlaylistImporter(private val youtube: MusicProvider,
                         item.thumbnails.firstOrNull()?.url, (item.duration * 1000).coerceAtLeast(0))
                     Entry(track.title, track.artist, track)
                 }
-        } else parseText(input)
+        } else parseText(input).also { require(it.size <= MAX_ENTRIES) { "Import up to $MAX_ENTRIES songs at a time." } }
     }
 
     internal fun spotifyPlaylistId(link: String): String {
@@ -152,7 +159,7 @@ class PlaylistImporter(private val youtube: MusicProvider,
             ',' in firstLine -> ','
             else -> null
         }
-        if (delimiter == null) return input.lineSequence().filter(String::isNotBlank).map { line ->
+        if (delimiter == null) return input.lineSequence().filter(String::isNotBlank).take(MAX_ENTRIES + 1).map { line ->
             val parts = line.trim().split(Regex("\\s+[-–—]\\s+"), limit = 2)
             Entry(parts[0], parts.getOrElse(1) { "" })
         }.toList()
@@ -184,6 +191,7 @@ class PlaylistImporter(private val youtube: MusicProvider,
                 (char == '\n' || char == '\r') && !quoted -> {
                     row.add(field.toString()); field.clear()
                     if (row.any(String::isNotBlank)) rows.add(row)
+                    require(rows.size <= MAX_ENTRIES + 1) { "Import up to $MAX_ENTRIES songs at a time." }
                     row = mutableListOf()
                     if (char == '\r' && input.getOrNull(index + 1) == '\n') index++
                 }

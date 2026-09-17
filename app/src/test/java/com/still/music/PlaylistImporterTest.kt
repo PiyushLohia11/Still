@@ -7,6 +7,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaylistImporterTest {
+    @Test fun bomAndOversizedImportsAreHandledBeforeNetworkRequests() = runBlocking {
+        val importer = PlaylistImporter(Provider())
+        assertEquals(listOf(PlaylistImporter.Entry("One", "U2")), importer.read("\uFEFFTitle,Artist\r\nOne,U2"))
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { importer.read("a".repeat(PlaylistImporter.MAX_INPUT_BYTES + 1)) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { importer.read((0..PlaylistImporter.MAX_ENTRIES).joinToString("\n") { "Song $it" }) }
+        }
+        Unit
+    }
     private class Provider : MusicProvider {
         override val id = "youtube"
         var results = emptyList<Track>()

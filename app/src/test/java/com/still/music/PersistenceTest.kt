@@ -17,6 +17,18 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class PersistenceTest {
+    @Test fun importRetryPreservesOrderAndBatchDuplicatesDoNotCreateExtraRows() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, StillDatabase::class.java).build()
+        try {
+            val repo = LibraryRepository(db.library())
+            val id = repo.create("Import")
+            val tracks = List(3) { Track("import:$it", "Song $it", "Artist") }
+            repo.importBatch(id, listOf(0 to tracks[0], 2 to tracks[2]))
+            repo.importBatch(id, listOf(1 to tracks[1], 2 to tracks[2]))
+            assertEquals(tracks, repo.tracks(id).first())
+        } finally { db.close() }
+    }
     @Test fun favouritesPlaylistAndRecentsSurviveReopen() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "test-${UUID.randomUUID()}.db"

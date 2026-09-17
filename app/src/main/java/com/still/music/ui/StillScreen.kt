@@ -59,20 +59,8 @@ import kotlinx.coroutines.flow.flow
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
-@Composable fun StillTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = Color(0xFFB9DCC5), onPrimary = Color(0xFF102A1C),
-        primaryContainer = Color(0xFF284334), onPrimaryContainer = Color(0xFFD7F3DF),
-        background = Color(0xFF0A0A0A), onBackground = Color.White,
-        surface = Color(0xFF121212), onSurface = Color.White,
-        surfaceVariant = Color(0xFF1E1E1E), onSurfaceVariant = Color(0xFFB3B3B3),
-        surfaceContainer = Color(0xFF161616), surfaceContainerHigh = Color(0xFF222222),
-        surfaceContainerHighest = Color(0xFF2C2C2C), outlineVariant = Color(0xFF333333),
-        secondaryContainer = Color(0xFF284334), onSecondaryContainer = Color(0xFFD7F3DF),
-        outline = Color(0xFF444444)), shapes = Shapes(
-            medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(20.dp),
-            extraLarge = RoundedCornerShape(24.dp)), content = content)
-}
+internal enum class Overlay { Player, Queue, Equalizer, Preferences, Import }
+
 @Composable fun StillScreen(vm: StillViewModel) {
     val search by vm.search.collectAsStateWithLifecycle()
     val player by vm.playback.collectAsStateWithLifecycle()
@@ -80,34 +68,39 @@ import kotlin.random.Random
     val favouriteIds = remember(favourites) { favourites.mapTo(hashSetOf(), Track::id) }
     val recents by vm.recents.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
-    val playlistTracks by vm.playlistTracks.collectAsStateWithLifecycle()
-    val playbackHealth by vm.playbackHealth.collectAsStateWithLifecycle()
+    val playlistContent by vm.playlistContent.collectAsStateWithLifecycle()
     val downloads by vm.downloads.collectAsStateWithLifecycle()
-    val preload by vm.preload.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val mixLoading by vm.mixLoading.collectAsStateWithLifecycle()
     val importState by vm.playlistImport.collectAsStateWithLifecycle()
-    var importing by rememberSaveable { mutableStateOf(false) }
-    var importName by rememberSaveable { mutableStateOf("") }
-    var importInput by rememberSaveable { mutableStateOf("") }
+    var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
+    var equalizerParent by rememberSaveable { mutableStateOf(Overlay.Preferences) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var libraryTab by rememberSaveable { mutableIntStateOf(1) }
-    var nowPlaying by rememberSaveable { mutableStateOf(false) }
-    var queue by rememberSaveable { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(false) }
     var playlistId by rememberSaveable { mutableStateOf<Long?>(null) }
     var addTrack by remember { mutableStateOf<Track?>(null) }
     var naming by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf<Playlist?>(null) }
     var delete by remember { mutableStateOf<Playlist?>(null) }
-    var equalizerOpen by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val tabState = rememberSaveableStateHolder()
+    val overlayState = rememberSaveableStateHolder()
     LaunchedEffect(tab) { focusManager.clearFocus() }
     LaunchedEffect(playlistId) { vm.selectPlaylist(playlistId) }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.message.value = null } }
-    BackHandler(tab == 1 && playlistId != null && !nowPlaying && !queue) { playlistId = null }
+    BackHandler(tab != 0 && (tab != 1 || playlistId == null) && overlay == null) { tab = 0 }
+    BackHandler(tab == 1 && playlistId != null && overlay == null) { playlistId = null }
+    val dismissOverlay: () -> Unit = {
+        overlay = when (overlay) {
+            Overlay.Queue -> if (player.current != null) Overlay.Player else null
+            Overlay.Equalizer -> equalizerParent
+            else -> null
+        }
+    }
+    LaunchedEffect(player.current, overlay) {
+        if (player.current == null && overlay in listOf(Overlay.Player, Overlay.Queue)) overlay = null
+    }
     var playerPoster by remember(player.current?.id, player.current?.artwork) { mutableStateOf<Image?>(null) }
     val playerGradient = rememberPlayerGradient(playerPoster)
     Scaffold(
@@ -116,24 +109,26 @@ import kotlin.random.Random
             if (tab != 1 || playlistId == null) {
                 Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text("Still", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    Action(Icons.Default.Tune, "Preferences", onClick = { settings = true })
+                    Icon(Icons.Default.GraphicEq, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Text("still", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f).padding(start = 10.dp))
+                    Action(Icons.Default.Tune, "Preferences", onClick = { overlay = Overlay.Preferences })
                 }
             } else {
                 Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
             }
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { if (overlay == null) SnackbarHost(snackbar) },
         bottomBar = {
             Column {
                 player.current?.let { current ->
-                    Surface(color = MaterialTheme.colorScheme.surfaceVariant,
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         shape = RoundedCornerShape(20.dp), shadowElevation = 0.dp,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Row(Modifier.fillMaxWidth().swipeVerticalAction(up = true) { nowPlaying = true }.swipeTracks(current.id, player.connected, vm::previousTrack, vm::next).clickable(role = Role.Button, onClickLabel = "Open Now Playing") { nowPlaying = true }.padding(10.dp),
+                        Row(Modifier.fillMaxWidth().swipeVerticalAction(up = true) { overlay = Overlay.Player }.swipeTracks(current.id, player.connected, vm::previousTrack, vm::next).clickable(role = Role.Button, onClickLabel = "Open Now Playing") { overlay = Overlay.Player }.padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Artwork(current, Modifier.size(48.dp).clip(CircleShape), cornerRadius = 24.dp)
+                            Artwork(current, Modifier.size(48.dp), cornerRadius = 14.dp)
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                 Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.SemiBold, modifier = Modifier.basicMarquee())
@@ -145,11 +140,11 @@ import kotlin.random.Random
                                 Modifier.size(width = 24.dp, height = 24.dp), barCount = 4)
                             Spacer(Modifier.width(12.dp))
                             PlaybackButton(player.playing, player.connected, onClick = vm::toggle)
-                            Action(Icons.Default.SkipNext, "Next track", onClick = vm::next)
+                            Action(Icons.Default.SkipNext, "Next track", enabled = player.connected && player.queue.size > 1, onClick = vm::next)
                         }
                     }
                 }
-                NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest, tonalElevation = 0.dp) {
                     NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Default.Home, null) }, label = { Text("Home") })
                     NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Default.Search, null) }, label = { Text("Search") })
                     NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.Default.LibraryMusic, null) }, label = { Text("Library") })
@@ -163,6 +158,7 @@ import kotlin.random.Random
                 HomePage(vm, onPlaylist = { addTrack = it },
                     onLibraryPlaylist = { playlistId = it; libraryTab = 1; tab = 1 })
             } else if (tab == 2) {
+                PageHeading("Find your sound.", "Play a song. Discover what belongs beside it.")
                 OutlinedTextField(value = search.query, onValueChange = vm::query,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                     label = { Text("Search music") }, placeholder = { Text("Tracks or artists") },
@@ -182,7 +178,7 @@ import kotlin.random.Random
                         item { EmptyState("No tracks found", "Try another song title or artist.", Icons.Default.MusicNote) }
                     items(search.tracks, key = Track::id) { track ->
                         TrackRow(track, (track.id in favouriteIds), player.current?.id == track.id,
-                            onPlay = { focusManager.clearFocus(); vm.play(track, search.tracks) }, onFavourite = { vm.favourite(track) },
+                            onPlay = { focusManager.clearFocus(); vm.playSearch(track) }, onFavourite = { vm.favourite(track) },
                             onQueue = { vm.enqueue(track) }, onPlaylist = { addTrack = track }, onDownload = { vm.download(track) })
                     }
                     if (search.more) item {
@@ -194,13 +190,14 @@ import kotlin.random.Random
             } else {
                 val selected = playlists.firstOrNull { it.id == playlistId }
                 if (selected == null) {
+                    PageHeading("Your collection.", "The music you come back to.")
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         FilledTonalButton(onClick = vm::playSmartMix, enabled = !mixLoading && player.connected && (favourites.isNotEmpty() || recents.isNotEmpty()), modifier = Modifier.weight(1f).height(48.dp)) {
                             if (mixLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             else Icon(Icons.Default.AutoAwesome, null)
                             Text("Quick Mix", Modifier.padding(start = 8.dp))
                         }
-                        OutlinedButton(onClick = { importing = true }, modifier = Modifier.weight(1f).height(48.dp)) {
+                        OutlinedButton(onClick = { overlay = Overlay.Import }, modifier = Modifier.weight(1f).height(48.dp)) {
                             Icon(Icons.Default.Download, null)
                             Text(if (importState.running) "${importState.imported}/${importState.total}" else "Import", Modifier.padding(start = 8.dp))
                         }
@@ -237,7 +234,7 @@ import kotlin.random.Random
                                         fontWeight = FontWeight.Bold, color = Color.White)
                                 }
                                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                                    Text(list.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(list.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     Text("Playlist", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
                                 }
                                 Box {
@@ -254,7 +251,9 @@ import kotlin.random.Random
                     }
                 } else if (selected != null) {
                     key(selected.id) {
-                        PlaylistPage(selected, playlistTracks, favourites, player, vm,
+                        PlaylistPage(selected, playlistContent.tracks.takeIf { playlistContent.id == selected.id }.orEmpty(), favourites, player, vm,
+                            loading = playlistContent.id != selected.id || playlistContent.loading,
+                            error = playlistContent.error.takeIf { playlistContent.id == selected.id },
                             onBack = { playlistId = null }, onAdd = { tab = 2 },
                             onPlaylist = { addTrack = it },
                             onRename = { rename = selected; naming = true }, onDelete = { delete = selected })
@@ -262,6 +261,15 @@ import kotlin.random.Random
                 } else {
                     val tracks = if (libraryTab == 0) favourites else recents
                     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+                        item { Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(if (libraryTab == 0) "Favourites" else "Recently played", style = MaterialTheme.typography.titleLarge)
+                                Text("${tracks.size} songs", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            FilledTonalIconButton(onClick = { vm.playShuffled(tracks) }, enabled = tracks.any(Track::playable) && player.connected) {
+                                Icon(Icons.Default.Shuffle, "Shuffle collection")
+                            }
+                        } }
                         if (tracks.isEmpty()) item { EmptyState(
                             if (libraryTab == 0) "Keep what you love" else if (libraryTab == 2) "Your listening starts here" else "A quiet playlist",
                             if (libraryTab == 0) "Tap a track’s heart to save it here." else if (libraryTab == 2) "Tracks appear after playback begins." else "Add tracks using their options menu.",
@@ -277,67 +285,57 @@ import kotlin.random.Random
         }
     }
     }
-    FullScreenSheet("Now playing", { nowPlaying = false }, visible = nowPlaying && player.current != null, showHeader = false, backgroundColors = playerGradient) {
-        NowPlaying(player, (player.current?.id in favouriteIds), vm,
-            onArtworkLoaded = { playerPoster = it }, onClose = { nowPlaying = false }, onQueue = { queue = true }, onPlaylist = {
-                addTrack = player.current
-                nowPlaying = false
-            })
-        if (equalizerOpen) {
-            FullScreenSheet("Equalizer", { equalizerOpen = false }, backgroundColors = listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.95f))) {
-                EqualizerPanel(vm.equalizer, onClose = { equalizerOpen = false })
+    overlay?.let { destination ->
+        val isPlayer = destination == Overlay.Player || destination == Overlay.Queue
+        FullScreenSheet(title = when (destination) {
+            Overlay.Player -> "Now playing"
+            Overlay.Queue -> "Queue"
+            Overlay.Equalizer -> "Equalizer"
+            Overlay.Preferences -> "Preferences"
+            Overlay.Import -> "Import playlist"
+        }, dismiss = dismissOverlay, showHeader = !isPlayer,
+            backgroundColors = if (isPlayer) playerGradient else null, snackbar = snackbar) {
+            overlayState.SaveableStateProvider(destination) {
+            when (destination) {
+                Overlay.Player -> NowPlaying(player, player.current?.id in favouriteIds, vm,
+                    onArtworkLoaded = { playerPoster = it }, onClose = dismissOverlay,
+                    onQueue = { overlay = Overlay.Queue },
+                    onEqualizer = { equalizerParent = Overlay.Player; overlay = Overlay.Equalizer },
+                    onPlaylist = { addTrack = player.current; overlay = null })
+                Overlay.Queue -> QueuePlayer(player, player.current?.id in favouriteIds, vm,
+                    onClose = dismissOverlay, onArtworkLoaded = { playerPoster = it })
+                Overlay.Equalizer -> EqualizerPanel(vm.equalizer)
+                Overlay.Preferences -> PreferencesPanel(vm) {
+                    equalizerParent = Overlay.Preferences; overlay = Overlay.Equalizer
+                }
+                Overlay.Import -> ImportPanel(vm) { id ->
+                    playlistId = id; libraryTab = 1; tab = 1; overlay = null
+                }
+            }
             }
         }
     }
-    if (queue) FullScreenSheet("Queue", { queue = false }, showHeader = false, backgroundColors = playerGradient) {
-        QueuePlayer(player, (player.current?.id in favouriteIds), vm,
-            onClose = { queue = false }, onArtworkLoaded = { playerPoster = it })
-    }
-    if (importing) AlertDialog(onDismissRequest = { importing = false }, title = { Text("Import Playlist") },
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (importState.running) {
-                Text(if (importState.total == 0) "Reading playlist..." else "Imported ${importState.imported} of ${importState.total}")
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Checked ${importState.processed} songs. Unmatched and duplicate songs are skipped.")
-            } else {
-                OutlinedTextField(importName, { importName = it.take(100) }, label = { Text("Playlist name") }, singleLine = true)
-                OutlinedTextField(importInput, { importInput = it }, label = { Text("Spotify or YouTube playlist link") },
-                    placeholder = { Text("Paste a public playlist link, or a text/CSV song list") }, minLines = 4, maxLines = 8)
-                if (importState.total > 0) Text("Imported ${importState.imported} of ${importState.total}")
-                importState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            }
-            importState.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        } }, confirmButton = {
-            if (importState.running) TextButton(onClick = vm::cancelPlaylistImport) { Text("Stop import") }
-            else TextButton(enabled = importName.isNotBlank() && importInput.isNotBlank(),
-                onClick = { vm.importPlaylist(importName, importInput) }) { Text("Import") }
-        }, dismissButton = { TextButton(onClick = { importing = false }) { Text("Close") } })
-    if (settings) AlertDialog(onDismissRequest = { settings = false }, title = { Text("Preferences") },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Preload next track", Modifier.weight(1f))
-                Switch(preload, onCheckedChange = vm::setPreload, modifier = Modifier.semantics { contentDescription = "Preload next track" })
-            }
-            Text("Buffers up to five seconds ahead in memory. Uses more mobile data. Use Download to save a full song for offline listening.")
-            Spacer(Modifier.height(16.dp))
-            Text("This session: ${playbackHealth.bufferWaits} buffer waits, ${playbackHealth.audioUnderruns} audio underruns.", style = MaterialTheme.typography.bodySmall)
-            Text("Buffer waits include seeking. Underruns can indicate device or emulator load.", style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(12.dp))
-            Text("Still is free and ad-free. YouTube Music access is unofficial and may stop working when the service changes. Your library stays on this device. Powered by NewPipeExtractor (GPL-3.0-or-later).")
-        } }, confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } })
-    if (addTrack != null && !naming) AlertDialog(onDismissRequest = { addTrack = null }, title = { Text("Add to playlist") },
+    if (addTrack != null && !naming) AlertDialog(onDismissRequest = { addTrack = null },
+        icon = { Icon(Icons.Default.PlaylistAdd, null) }, title = { Text("Add to playlist") },
         text = { LazyColumn {
             if (playlists.isEmpty()) item { Text("Create your first playlist.") }
             items(playlists, key = Playlist::id) { list ->
-                TextButton(onClick = { addTrack?.let { vm.addTrackToPlaylist(list.id, it) }; addTrack = null },
-                    modifier = Modifier.fillMaxWidth()) { Text(list.name) }
+                ListItem(headlineContent = { Text(list.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    leadingContent = { Icon(Icons.Default.LibraryMusic, null, tint = MaterialTheme.colorScheme.primary) },
+                    trailingContent = { Icon(Icons.Default.Add, null) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
+                        addTrack?.let { vm.addTrackToPlaylist(list.id, it) }; addTrack = null
+                    })
             }
         } }, confirmButton = { TextButton(onClick = { naming = true }) { Text("New playlist") } },
         dismissButton = { TextButton(onClick = { addTrack = null }) { Text("Cancel") } })
     if (naming) {
-        var name by remember { mutableStateOf(rename?.name ?: "") }
-        AlertDialog(onDismissRequest = { naming = false; rename = null }, title = { Text(if (rename == null) "New playlist" else "Rename playlist") },
-            text = { OutlinedTextField(name, { name = it.take(100) }, label = { Text("Playlist name") }, singleLine = true) },
+        var name by rememberSaveable(rename?.id) { mutableStateOf(rename?.name ?: "") }
+        AlertDialog(onDismissRequest = { naming = false; rename = null },
+            icon = { Icon(Icons.Default.LibraryMusic, null) }, title = { Text(if (rename == null) "New playlist" else "Rename playlist") },
+            text = { OutlinedTextField(name, { name = it.take(100) }, label = { Text("Playlist name") },
+                supportingText = { Text("${name.length}/100 · Give your collection a name") }, singleLine = true) },
             confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
                 val list = rename
                 if (list == null) vm.createPlaylist(name, addTrack) else vm.renamePlaylist(list.id, name)
@@ -346,6 +344,7 @@ import kotlin.random.Random
     }
     delete?.let { list ->
         AlertDialog(onDismissRequest = { delete = null }, title = { Text("Delete ${list.name}?") },
+            icon = { Icon(Icons.Default.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
             text = { Text("This removes the playlist from this device. Your favourites remain.") },
             confirmButton = { TextButton(onClick = { vm.deletePlaylist(list.id); if (playlistId == list.id) playlistId = null; delete = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Cancel") } })
@@ -364,7 +363,7 @@ import kotlin.random.Random
         verticalAlignment = Alignment.CenterVertically) {
         Action(Icons.Default.SkipPrevious, "Previous track", enabled = state.connected,
             size = 64.dp, iconSize = 36.dp, onClick = vm::previous)
-        PlaybackButton(state.playing, state.connected, size = 88.dp, prominent = false, onClick = vm::toggle)
+        PlaybackButton(state.playing, state.connected, size = 76.dp, prominent = true, onClick = vm::toggle)
         Action(Icons.Default.SkipNext, "Next track", enabled = state.connected,
             size = 64.dp, iconSize = 36.dp, onClick = vm::next)
     }
@@ -379,60 +378,61 @@ import kotlin.random.Random
 }
 
 @Composable private fun NowPlaying(state: PlaybackState, favourite: Boolean, vm: StillViewModel,
-    onQueue: () -> Unit, onPlaylist: () -> Unit, onClose: () -> Unit, onArtworkLoaded: (Image?) -> Unit) {
+    onQueue: () -> Unit, onPlaylist: () -> Unit, onClose: () -> Unit, onEqualizer: () -> Unit, onArtworkLoaded: (Image?) -> Unit) {
     val track = state.current ?: return
     var menu by remember(track.id) { mutableStateOf(false) }
-    var equalizerOpen by rememberSaveable { mutableStateOf(false) }
     var lyricsOpen by rememberSaveable { mutableStateOf(false) }
-    var poster by remember(track.id) { mutableStateOf<Image?>(null) }
-    val colors = rememberPlayerGradient(poster)
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val artHeight = minOf(maxWidth * 1.12f, maxHeight * 0.55f).coerceAtLeast(180.dp)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(Modifier.fillMaxWidth().height(artHeight)) {
-                Artwork(track, Modifier.fillMaxSize().swipeTracks(track.id, state.connected, vm::previousTrack, vm::next),
-                    cornerRadius = 0.dp, highQuality = true, onLoaded = { poster = it; onArtworkLoaded(it) })
-                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                    0f to Color.Black.copy(alpha = 0.12f), 0.5f to Color.Transparent, 1f to colors[1])))
-                PlayerHandle("Close Now playing", onClose)
-            }
-            Column(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(colors[1], colors[2])))
-                .padding(horizontal = 28.dp)) {
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        val artSize = minOf(maxWidth - 56.dp, maxHeight * 0.43f, 380.dp).coerceAtLeast(140.dp)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+            PlayerHandle("Close Now playing", onClose)
+            Text("NOW PLAYING", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp))
+            Artwork(track, Modifier.size(artSize).shadow(20.dp, RoundedCornerShape(28.dp))
+                .swipeTracks(track.id, state.connected, vm::previousTrack, vm::next),
+                cornerRadius = 28.dp, highQuality = true, onLoaded = onArtworkLoaded)
+            Column(Modifier.widthIn(max = 620.dp).fillMaxWidth().padding(horizontal = 28.dp)) {
+                Row(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(track.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                        Text(track.title, style = MaterialTheme.typography.headlineSmall,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(track.artist, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.55f),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(track.artist, style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Box {
                         Action(Icons.Default.MoreHoriz, "Options for ${track.title}", onClick = { menu = true })
                         DropdownMenu(menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
-                            DropdownMenuItem(text = { Text("Equalizer") }, onClick = { menu = false; equalizerOpen = true })
+                            DropdownMenuItem(text = { Text("Equalizer") }, onClick = { menu = false; onEqualizer() })
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
                 PlaybackProgress(track.id, state.duration, state.connected, vm)
                 Transport(state, vm)
-                VolumeControlBar(onError = { vm.message.value = it }, compact = true)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    QueueModes(state, vm)
                     Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        if (favourite) "Remove from favourites" else "Add to favourites", onClick = { vm.favourite(track) })
-                    Action(Icons.AutoMirrored.Filled.Subject, "Lyrics", onClick = { lyricsOpen = !lyricsOpen })
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { DownloadButton(track, vm) }
+                        if (favourite) "Remove from favourites" else "Add to favourites",
+                        tint = if (favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        onClick = { vm.favourite(track) })
                     Action(Icons.AutoMirrored.Filled.QueueMusic, "Queue", onClick = onQueue)
                 }
-                if (state.buffering) LinearProgressIndicator(Modifier.fillMaxWidth())
+                VolumeControlBar(onError = { vm.message.value = it }, compact = true)
+                GlassCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { lyricsOpen = !lyricsOpen }) {
+                            Icon(Icons.AutoMirrored.Filled.Subject, null)
+                            Text(if (lyricsOpen) "Hide lyrics" else "Show lyrics", Modifier.padding(start = 8.dp))
+                        }
+                        DownloadButton(track, vm)
+                    }
+                    if (lyricsOpen) PlayingLyrics(track, vm)
+                }
+                if (state.buffering) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 12.dp))
                 state.error?.let { ErrorState(it, vm::toggle) }
-                if (lyricsOpen) PlayingLyrics(track, vm)
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(24.dp))
             }
         }
-    }
-    if (equalizerOpen) FullScreenSheet("Equalizer", { equalizerOpen = false }) {
-        EqualizerPanel(vm.equalizer, onClose = { equalizerOpen = false })
     }
 }
 
@@ -443,9 +443,10 @@ import kotlin.random.Random
         SquigglySlider(value = dragging ?: position.toFloat().coerceIn(0f, durationMs.coerceAtLeast(1).toFloat()),
             onValueChange = { dragging = it },
             onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
+            onValueChangeCanceled = { dragging = null },
             valueRange = 0f..durationMs.coerceAtLeast(1).toFloat(), enabled = connected && durationMs > 0,
-            waveAmplitude = 0.dp, thumbRadius = 0.dp, trackStrokeWidth = 5.dp,
-            activeTrackColor = Color.White.copy(alpha = 0.55f), formatTime = ::duration)
+            waveAmplitude = 0.dp, thumbRadius = 5.dp, trackStrokeWidth = 4.dp,
+            activeTrackColor = MaterialTheme.colorScheme.primary, formatTime = ::duration)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(playerTime(dragging?.toLong() ?: position), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
             Text("−" + playerTime((durationMs - (dragging?.toLong() ?: position)).coerceAtLeast(0)),
@@ -487,18 +488,18 @@ private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((m
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     LaunchedEffect(state.index) { if (state.queue.isNotEmpty()) listState.animateScrollToItem(state.index.coerceIn(0, state.queue.lastIndex)) }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (state.queue.isEmpty()) item { Text("The queue is empty", Modifier.padding(vertical = 24.dp)) }
         itemsIndexed(state.queue) { index, track ->
             var menu by remember(index, track.id) { mutableStateOf(false) }
             SwipeActions("$index:${track.id}", "Move up", "Move down",
                 onRight = { if (index > 0) vm.move(index, index - 1) },
                 onLeft = { if (index < state.queue.lastIndex) vm.move(index, index + 1) }, enabled = state.connected) {
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                    .background(if (index == state.index) Color.White.copy(alpha = 0.08f) else Color.Transparent)
-                    .clickable(onClickLabel = "Play ${track.title}") { vm.jump(index) }.padding(vertical = 5.dp),
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(if (index == state.index) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f))
+                    .clickable(onClickLabel = "Play ${track.title}") { vm.jump(index) }.padding(horizontal = 10.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Artwork(track, Modifier.size(44.dp), cornerRadius = 4.dp)
+                    Artwork(track, Modifier.size(48.dp), cornerRadius = 12.dp)
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                         Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -570,41 +571,49 @@ private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((m
     }
 }
 
-@Composable private fun FullScreenSheet(title: String, dismiss: () -> Unit, visible: Boolean = true, showHeader: Boolean = true,
-    backgroundColors: List<Color>? = null, content: @Composable ColumnScope.() -> Unit) {
-    val visibility = remember { MutableTransitionState(false) }
-    LaunchedEffect(visible) { visibility.targetState = visible }
-    if (!visibility.currentState && !visibility.targetState && visibility.isIdle) return
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        AnimatedVisibility(visibleState = visibility,
-            enter = slideInVertically(tween(360, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(220)),
-            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(220))) {
-        Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = Color.White) {
-            Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                backgroundColors ?: listOf(Color.Transparent, Color.Transparent)))
-                .safeDrawingPadding().imePadding()) {
-                if (showHeader) Row(Modifier.fillMaxWidth().swipeVerticalAction(up = false, action = dismiss).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Action(Icons.Default.KeyboardArrowDown, "Close $title", onClick = dismiss)
-                    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp))
-                }
-                content()
-            }
+@Composable internal fun FullScreenSheet(title: String, dismiss: () -> Unit, showHeader: Boolean = true,
+    backgroundColors: List<Color>? = null, snackbar: SnackbarHostState? = null,
+    content: @Composable ColumnScope.() -> Unit) {
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false,
+        decorFitsSystemWindows = false)) {
+        val base = MaterialTheme.colorScheme.background
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.rgb(12, 16, 15)))
         }
+        // Keep the root opaque throughout transitions, including system-bar insets.
+        Surface(Modifier.fillMaxSize().semantics { paneTitle = title }, color = base) {
+            var entered by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { entered = true }
+            Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                backgroundColors ?: listOf(MaterialTheme.colorScheme.surfaceContainer, base)))) {
+                AnimatedVisibility(entered, enter = fadeIn(tween(180)) + slideInVertically(tween(260)) { it / 12 }) {
+                    Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+                        if (showHeader) Row(Modifier.fillMaxWidth().swipeVerticalAction(up = false, action = dismiss)
+                            .padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Action(Icons.AutoMirrored.Filled.ArrowBack, "Close $title", onClick = dismiss)
+                            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp))
+                        }
+                        Box(Modifier.weight(1f).fillMaxWidth()) { Column(Modifier.fillMaxSize(), content = content) }
+                        snackbar?.let { SnackbarHost(it) }
+                    }
+                }
+            }
         }
     }
 }
 @Composable internal fun TrackRow(track: Track, favourite: Boolean, current: Boolean, onPlay: () -> Unit,
     onFavourite: () -> Unit, onQueue: () -> Unit, onPlaylist: () -> Unit, onRemove: (() -> Unit)? = null, onDownload: (() -> Unit)? = null) {
-    var menu by remember { mutableStateOf(false) }
+    var menu by remember(track.id) { mutableStateOf(false) }
     SwipeActions(track.id, "Queue", if (favourite) "Unfavourite" else "Favourite",
         onRight = onQueue, onLeft = onFavourite, enabled = track.playable) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp)).background(if (current) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent)
+            .clip(RoundedCornerShape(20.dp)).background(if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
             .clickable(enabled = track.playable, onClickLabel = "Play ${track.title}", role = Role.Button, onClick = onPlay)
             .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Artwork(track, Modifier.size(56.dp))
+            Artwork(track, Modifier.size(56.dp), cornerRadius = 14.dp)
             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-                Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                Text(track.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(track.unavailableReason ?: duration(track.durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -681,7 +690,7 @@ private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((m
     Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 52.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
-        Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 @Composable private fun Loading() { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }

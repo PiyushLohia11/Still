@@ -64,6 +64,12 @@ abstract class LibraryDao {
         upsert(StoredTrack.from(track))
         add(PlaylistEntry(playlist, track.id, nextPosition(playlist)))
     }
+    @Transaction open suspend fun importBatch(playlist: Long, tracks: List<Pair<Int, Track>>) {
+        tracks.forEach { (position, track) ->
+            upsert(StoredTrack.from(track))
+            add(PlaylistEntry(playlist, track.id, position))
+        }
+    }
 }
 @Database(entities = [StoredTrack::class, Favourite::class, Recent::class, Playlist::class, PlaylistEntry::class], version = 1, exportSchema = true)
 abstract class StillDatabase : RoomDatabase() { abstract fun library(): LibraryDao }
@@ -107,5 +113,6 @@ class LibraryRepository(private val dao: LibraryDao) {
     }
     suspend fun delete(id: Long) = dao.deletePlaylist(id)
     suspend fun add(id: Long, track: Track) = dao.addToPlaylist(id, track)
+    suspend fun importBatch(id: Long, tracks: List<Pair<Int, Track>>) = dao.importBatch(id, tracks)
     suspend fun remove(id: Long, track: String) = dao.remove(id, track)
 }

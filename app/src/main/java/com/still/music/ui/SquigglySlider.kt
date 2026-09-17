@@ -53,10 +53,12 @@ fun SquigglySlider(
     trackStrokeWidth: Dp = 3.5.dp,
     thumbRadius: Dp = 8.dp,
     formatTime: ((Long) -> String)? = null,
-    accessibilityLabel: String = "Playback position"
+    accessibilityLabel: String = "Playback position",
+    onValueChangeCanceled: (() -> Unit)? = null
 ) {
     val changeValue by rememberUpdatedState(onValueChange)
     val finishChange by rememberUpdatedState(onValueChangeFinished)
+    val cancelChange by rememberUpdatedState(onValueChangeCanceled)
     val density = LocalDensity.current
     val waveLengthPx = with(density) { waveLength.toPx() }
     val maxAmplitudePx = with(density) { waveAmplitude.toPx() }
@@ -116,7 +118,7 @@ fun SquigglySlider(
                 progressBarRangeInfo = ProgressBarRangeInfo(displayFraction, 0f..1f)
                 if (enabled) {
                     setProgress { targetProgress ->
-                        val targetVal = valueRange.start + targetProgress * rangeSpan
+                        val targetVal = valueRange.start + targetProgress.coerceIn(0f, 1f) * rangeSpan
                         changeValue(targetVal)
                         finishChange?.invoke()
                         true
@@ -126,13 +128,12 @@ fun SquigglySlider(
             .pointerInput(enabled, valueRange) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(
-                    onPress = { offset ->
+                    onTap = { offset ->
                         val w = size.width.toFloat().coerceAtLeast(1f)
                         val fraction = (offset.x / w).coerceIn(0f, 1f)
                         dragProgress = fraction
                         val targetVal = valueRange.start + fraction * rangeSpan
                         changeValue(targetVal)
-                        tryAwaitRelease()
                         finishChange?.invoke()
                         dragProgress = null
                     }
@@ -157,6 +158,7 @@ fun SquigglySlider(
                     onDragCancel = {
                         isDragging = false
                         dragProgress = null
+                        cancelChange?.invoke()
                     },
                     onHorizontalDrag = { change, _ ->
                         change.consume()

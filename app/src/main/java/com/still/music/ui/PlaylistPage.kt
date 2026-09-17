@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,7 @@ import com.still.music.provider.Track
 
 @Composable internal fun PlaylistPage(playlist: Playlist, tracks: List<Track>,
     favourites: List<Track>, player: PlaybackState, vm: StillViewModel,
+    loading: Boolean = false, error: String? = null,
     onBack: () -> Unit, onAdd: () -> Unit, onPlaylist: (Track) -> Unit,
     onRename: () -> Unit, onDelete: () -> Unit) {
     var query by rememberSaveable(playlist.id) { mutableStateOf("") }
@@ -35,11 +37,11 @@ import com.still.music.provider.Track
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item(key = "header") {
             Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(
-                MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.background)))
+                MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.background)))
                 .padding(horizontal = 20.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to playlists") }
-                    Text("YOUR PLAYLIST", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                    Text("YOUR PLAYLIST", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreHoriz, "Playlist options") }
                         DropdownMenu(menu, onDismissRequest = { menu = false }) {
@@ -48,8 +50,8 @@ import com.still.music.provider.Track
                         }
                     }
                 }
-                Box(Modifier.padding(vertical = 16.dp).size(192.dp).align(Alignment.CenterHorizontally)
-                    .clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+                Box(Modifier.padding(vertical = 16.dp).size(208.dp).align(Alignment.CenterHorizontally)
+                    .shadow(16.dp, RoundedCornerShape(28.dp)).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center) {
                     val covers = tracks.take(4)
                     if (covers.size >= 4) Column {
@@ -59,7 +61,7 @@ import com.still.music.provider.Track
                     } else if (covers.isNotEmpty()) Artwork(covers.first(), Modifier.fillMaxSize(), cornerRadius = 0.dp)
                     else Icon(Icons.Default.LibraryMusic, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                 }
-                Text(playlist.name, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text(playlist.name, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Text(playlistSummary(tracks), Modifier.padding(top = 6.dp, bottom = 16.dp),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -84,14 +86,24 @@ import com.still.music.provider.Track
                 }
             }
         }
-        if (tracks.isEmpty()) item {
+        if (loading) item {
+            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (error != null) item {
+            Column(Modifier.padding(24.dp)) {
+                Text(error, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onBack) { Text("Back to library") }
+            }
+        } else if (tracks.isEmpty()) item {
             Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Make it yours", style = MaterialTheme.typography.titleLarge)
                 Text("Find a song, then choose Add to playlist from its menu.", Modifier.padding(vertical = 12.dp))
                 FilledTonalButton(onClick = onAdd) { Text("Find music") }
             }
         } else if (visible.isEmpty()) item {
-            Text("No songs match this search.", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.padding(24.dp)) {
+                Text("No songs match this search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { query = "" }) { Text("Clear filter") }
+            }
         }
         items(visible, key = Track::id) { track ->
             TrackRow(track, (track.id in favouriteIds), player.current?.id == track.id,
