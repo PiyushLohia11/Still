@@ -30,6 +30,7 @@ import com.still.music.provider.Track
         val term = query.trim()
         tracks.filter { it.title.contains(term, true) || it.artist.contains(term, true) }
     }
+    val favouriteIds = remember(favourites) { favourites.mapTo(hashSetOf(), Track::id) }
     val playable = tracks.any(Track::playable) && player.connected
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item(key = "header") {
@@ -93,7 +94,7 @@ import com.still.music.provider.Track
             Text("No songs match this search.", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(visible, key = Track::id) { track ->
-            TrackRow(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
+            TrackRow(track, (track.id in favouriteIds), player.current?.id == track.id,
                 { vm.play(track, tracks) }, { vm.favourite(track) }, { vm.enqueue(track) }, { onPlaylist(track) },
                 onRemove = { vm.removeFromPlaylist(playlist.id, track) }, onDownload = { vm.download(track) })
         }

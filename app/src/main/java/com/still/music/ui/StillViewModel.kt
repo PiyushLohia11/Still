@@ -26,7 +26,7 @@ data class PlaylistImportState(val running: Boolean = false, val total: Int = 0,
 data class SearchState(val query: String = "", val tracks: List<Track> = emptyList(), val loading: Boolean = false,
     val error: String? = null, val more: Boolean = false)
 data class PlaybackState(val queue: List<Track> = emptyList(), val index: Int = 0, val playing: Boolean = false,
-    val buffering: Boolean = false, val position: Long = 0, val duration: Long = 0, val shuffle: Boolean = false,
+    val buffering: Boolean = false, val duration: Long = 0, val shuffle: Boolean = false,
     val repeat: Int = 0, val error: String? = null, val connected: Boolean = false) {
     val current get() = queue.getOrNull(index)
 }
@@ -108,10 +108,11 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         if (id == null) flowOf(emptyList()) else graph.library.tracks(id).onStart { emit(emptyList()) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val equalizer = graph.equalizer
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var searchJob: Job? = null
     private var nextOffset = 0
     private var controller: MediaController? = null
+    private val clock = PlaybackClock(viewModelScope) { controller?.currentPosition ?: 0L }
+    val playbackPosition = clock.position
     private val future = MediaController.Builder(app,
         SessionToken(app, ComponentName(app, PlaybackService::class.java))).buildAsync()
     private val listener = object : Player.Listener {
@@ -127,7 +128,6 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
                 refresh()
             } catch (e: Exception) { message.value = "Playback service could not connect. Reopen Still to retry." }
         }, androidx.core.content.ContextCompat.getMainExecutor(app))
-        viewModelScope.launch { while (isActive) { refresh(); delay(500) } }
         viewModelScope.launch { graph.storageError.collect { it?.let { error -> message.value = error } } }
         viewModelScope.launch { graph.playbackReady.collect { refresh() } }
     }
@@ -394,7 +394,8 @@ class StillViewModel(app: Application) : AndroidViewModel(app) {
         }
         _playback.value = PlaybackState(cachedQueue,
             p.currentMediaItemIndex.coerceAtLeast(0), p.playWhenReady, p.playbackState == Player.STATE_BUFFERING,
-            p.currentPosition.coerceAtLeast(0), duration, p.shuffleModeEnabled, p.repeatMode, error, graph.playbackReady.value)
+            duration, p.shuffleModeEnabled, p.repeatMode, error, graph.playbackReady.value)
+        clock.refresh()
         continueRadio(p)
     }
     override fun onCleared() { controller?.removeListener(listener); MediaController.releaseFuture(future) }

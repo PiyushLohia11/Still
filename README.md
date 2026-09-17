@@ -1,134 +1,116 @@
-<div align="center">
+# Still
 
-# 🎵 Still
+**Music, with room to breathe.**
 
-**Music, with room to breathe.**  
-*A native, ad-free, lightweight Android music player with YouTube Music streaming & library management.*
+A native Android music player built with Kotlin and Jetpack Compose. Search for music, keep a personal library, and listen with background playback, offline downloads, and synced lyrics.
 
-[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.android.com/)
-[![Android API](https://img.shields.io/badge/Min%20SDK-26%20(Android%208.0%2B)-blue?style=for-the-badge)](https://developer.android.com)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Jetpack-Compose%20M3-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![License](https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge)](docs/THIRD_PARTY.md)
+Android 8.0+ · Material 3 · No account required for YouTube search and playback
 
-</div>
+## What you can do
 
----
+- **Discover music:** search songs and artists, explore mood mixes, and get recommendations based on recent listening and favourites.
+- **Make it yours:** create, rename, and import playlists; browse cover collages; search within a playlist; play in order or shuffle.
+- **Keep listening:** use the mini-player, background playback, system media controls, a queue of up to 300 tracks, repeat, and optional Auto-Radio.
+- **Listen offline:** download individual songs or playlists and manage saved audio in Library → Downloads.
+- **Follow along:** view synced or plain lyrics from LRCLIB and tap a synced line to seek.
+- **Adjust playback:** use the equalizer, media volume controls, and optional next-track preloading.
 
-## ✨ Features
+Queues and playback position are saved between sessions. Playlists, favourites, and recent listening are stored locally on your device.
 
-### 🎧 Seamless Streaming & Playback
-- **YouTube Music Engine**: Fast, ad-free search and playback powered by unofficial extraction without login, tracking, or accounts.
-- **Background Playback**: Continues playing smoothly in the background, with lock-screen system media controls and notification actions.
-- **Smart Queue Management**: Reorder, jump, remove tracks, shuffle, and cycle repeat modes with up to 300 entries.
-- **Preloading & Low Latency**: Preloads upcoming tracks in memory for instant transitions.
-- **Audio State Preservation**: Remembers your queue, playback position, and repeat settings across app restarts.
+## Gestures
 
-### 📚 Library & Organization
-- **Local Playlists**: Create, rename, delete, and organize playlists locally.
-- **Favorites & Recents**: Quick-access favorites and automatic tracking of your latest 100 listened tracks.
-- **Audius Legacy Support**: Provider-qualified playback architecture supporting Audius catalog tracks.
+Buttons and menus remain available alongside gestures.
 
-### 📜 Lyrics & Offline
-- **Synchronized Lyrics**: Real-time scrolling lyrics powered by LRCLIB.
-- **Offline Caching**: Download songs directly to local storage for offline playback.
+| Where | Gesture | Action |
+| --- | --- | --- |
+| Song rows in search, playlists, favourites, recent listening, and mixes | Swipe right / left | Add to queue / toggle favourite |
+| Ready downloads | Swipe right / left | Add to queue / toggle favourite |
+| Queue rows | Swipe right / left | Move up / down one place |
+| Mini-player or full-player artwork | Swipe left / right | Next / previous track |
+| Mini-player | Swipe up | Open Now Playing |
+| Now Playing and Queue handles, other sheet headers | Swipe down | Close the sheet |
 
----
+Horizontal discovery carousels keep their normal scrolling behavior. Song actions show a reveal label and haptic feedback when the swipe crosses its threshold.
 
-## 🛠️ Tech Stack
-
-| Layer | Technologies |
-|---|---|
-| **UI & Theming** | Jetpack Compose, Material 3, Dark Theme, Coil 3 (Async Image Loading) |
-| **Media & Audio Engine** | AndroidX Media3 (ExoPlayer + MediaSessionService) |
-| **Local Persistence** | Room Database (Metadata, Playlists, Recents), Preferences DataStore |
-| **Extraction & Network** | NewPipeExtractor, OkHttp 3, Kotlinx Serialization |
-| **Async & Reactive** | Kotlin Coroutines, StateFlow, Lifecycle-aware UI collectors |
-
----
-
-## 🚀 Getting Started
+## Build and run
 
 ### Requirements
-- **JDK**: Version 21 (bundled with recent Android Studio) or JDK 17 minimum.
-- **Android SDK**: Platform 37.1 (API 35+) and Build Tools 36.0.0.
-- **Target Device**: Android 8.0 (API 26) or newer with an active internet connection.
 
----
+- JDK 17 or newer; Android Studio’s bundled JBR works.
+- Android SDK platform **37.1**, as configured in `app/build.gradle.kts`.
+- Android SDK Platform-Tools for installation and device tests.
+- Internet access for the first Gradle build and online music features.
 
-### 💻 Build & Install
+Use the included Gradle wrapper. Set `sdk.dir` in your local `local.properties`, or configure the Android SDK through your environment. Do not commit machine-specific SDK paths or credentials.
 
-#### 🪟 Windows (PowerShell)
+### Windows / PowerShell
+
 ```powershell
-# 1. Set JDK path (if using Android Studio JBR)
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-
-# 2. Run unit tests & build debug APK
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-
-# 3. Install to connected device (via ADB)
 & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-#### 🍏 macOS & 🐧 Linux
-```bash
-# Set JAVA_HOME if needed, then build & test
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+### macOS / Linux
 
-# Install via ADB
+```bash
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
----
+The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. This is a development build, not an optimized production release. Enable USB debugging and authorize your computer before installing to a phone.
 
-## 🏗️ Architecture Overview
+YouTube playback does not require an API key. The legacy Audius provider optionally reads a public `AUDIUS_API_KEY` from the environment or a local `credentials.properties`; see `credentials.properties.example`. Never put private tokens into an APK.
 
-```
-StillApp
- ├── UI Layer (Jetpack Compose)
- │    ├── StillScreen & FeaturePanels (Material 3 UI, Now Playing, Mini-Player)
- │    └── StillViewModel (Exposes StateFlows to composables)
- │
- ├── Playback Layer (Media3)
- │    ├── PlaybackService (ExoPlayer + MediaSession, background lifecycle)
- │    └── PlaybackResolver (Resolves fresh stream URLs on background threads)
- │
- ├── Data & Storage Layer
- │    ├── LibraryRepository (Room database: Tracks, Playlists, Recents, Favourites)
- │    ├── PreferencesDataStore (User settings, queue position snapshots)
- │    └── OfflineStore (Local audio cache & file manager)
- │
- └── Provider Layer
-      ├── YouTubeProvider (NewPipeExtractor search & audio streams)
-      └── AudiusProvider (REST API provider)
+## Tests and performance
+
+```powershell
+# Unit tests, Android lint, and debug APK
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+# Gesture tests on a connected device or emulator
+.\gradlew.bat :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.still.music.SwipeActionsTest'
 ```
 
----
+The full `connectedDebugAndroidTest` suite also includes live playback tests that need internet access and available provider tracks. Use a test device: instrumentation installs test packages and interacts with the app.
 
-## 🧪 Verification & Tests
+Playback progress is observed separately from screen and library state. Its timer runs only while a progress or lyrics view is observing it. Flat sliders avoid wave animations and sine-path drawing; paused visualizers stop their repeating animations. Regression tests cover clock subscription behavior, immediate seek updates, and gesture thresholds.
 
-To execute provider parsing, queue logic, Room database tests, and Media3 timeline tests:
+These changes reduce unnecessary UI work; they are not a claim of measured frame-rate improvement. Debug builds, cold startup, network conditions, and provider extraction can still affect responsiveness. To inspect frame timing after reproducing an issue:
 
 ```bash
-# Unit Tests
-./gradlew :app:testDebugUnitTest
-
-# Connected Device Instrumentation Tests
-./gradlew :app:connectedDebugAndroidTest
+adb shell dumpsys gfxinfo com.still.music
 ```
 
-> For full test history and verified providers, see [YouTube Verification](docs/YOUTUBE.md), [Audius Verification](docs/PROVIDER.md), and [Offline & Lyrics Verification](docs/OFFLINE_LYRICS.md).
+## Project layout
 
----
+```text
+app/src/main/java/com/still/music/
+├── ui/         Compose screens, gestures, theme, and view model
+├── playback/   Media3 service, stream resolution, and queue rules
+├── provider/   YouTube/Audius providers, recommendations, imports
+├── data/       Room library and DataStore preferences
+├── offline/    Downloads, transfer, and local audio storage
+├── lyrics/     LRCLIB lookup, caching, and synchronized lyrics
+└── audio/      Equalizer management
+```
 
-## ⚖️ Third-Party Notices & Licenses
+Main dependencies: Jetpack Compose / Material 3, Media3, Room, DataStore, WorkManager, Coil, OkHttp, Kotlin coroutines, and NewPipeExtractor. Versions are pinned in the Gradle files.
 
-- **NewPipeExtractor** is licensed under **GPL-3.0-or-later**. Its license is bundled directly in app assets (see [Third-Party Notices](docs/THIRD_PARTY.md)).
-- This project is an independent client and is **not affiliated with, endorsed by, or sponsored by YouTube, Google LLC, or Audius**.
-- No credentials or private API keys are required to build or run this application.
+## Known limits
 
----
+- YouTube access uses unofficial extraction. Availability can change, and some tracks may fail or require a provider update. Still is not affiliated with YouTube or Spotify.
+- Playlist imports can leave songs unmatched; already imported songs remain saved if an import stops.
+- Lyrics depend on third-party coverage and matching accuracy.
+- Library and downloads are local, with no account sync. Saved audio is removed when the app is uninstalled.
+- The legacy provider and verification documents describe specific past test runs, not guarantees of current catalog availability.
 
-<div align="center">
-Made with ❤️ for clean, uncluttered music listening.
-</div>
+## Further reading
+
+- [YouTube provider notes](docs/YOUTUBE.md)
+- [Offline audio and lyrics](docs/OFFLINE_LYRICS.md)
+- [Audius provider notes](docs/PROVIDER.md)
+- [Historical verification report](docs/VERIFICATION.md)
+- [Third-party notices and NewPipeExtractor licensing](docs/THIRD_PARTY.md)
+
+NewPipeExtractor is licensed under GPL-3.0-or-later; its license text is included in the APK. See the third-party notices before redistributing the app.

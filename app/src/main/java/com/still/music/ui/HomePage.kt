@@ -49,6 +49,7 @@ private val homeMixes = listOf(
     val home by vm.home.collectAsStateWithLifecycle()
     val player by vm.playback.collectAsStateWithLifecycle()
     val favourites by vm.favourites.collectAsStateWithLifecycle()
+    val favouriteIds = remember(favourites) { favourites.mapTo(hashSetOf(), Track::id) }
     val recents by vm.recents.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
     val mixLoading by vm.mixLoading.collectAsStateWithLifecycle()
@@ -88,7 +89,7 @@ private val homeMixes = listOf(
             if (home.mixLoading) item { HomeLoading() }
             home.mixError?.let { error -> item { HomeError(error) { vm.openHomeMix(selected) } } }
             items(home.mixTracks, key = Track::id) { track ->
-                TrackRow(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
+                TrackRow(track, (track.id in favouriteIds), player.current?.id == track.id,
                     { vm.play(track, home.mixTracks) }, { vm.favourite(track) }, { vm.enqueue(track) },
                     { onPlaylist(track) }, onDownload = { vm.download(track) })
             }
@@ -127,7 +128,7 @@ private val homeMixes = listOf(
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(home.tracks, key = Track::id) { track ->
-                        RecommendationCard(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
+                        RecommendationCard(track, (track.id in favouriteIds), player.current?.id == track.id,
                             onPlay = { vm.play(track, home.tracks) }, onFavourite = { vm.favourite(track) },
                             onQueue = { vm.enqueue(track) }, onPlaylist = { onPlaylist(track) },
                             onDownload = { vm.download(track) })

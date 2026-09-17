@@ -55,6 +55,8 @@ fun SquigglySlider(
     formatTime: ((Long) -> String)? = null,
     accessibilityLabel: String = "Playback position"
 ) {
+    val changeValue by rememberUpdatedState(onValueChange)
+    val finishChange by rememberUpdatedState(onValueChangeFinished)
     val density = LocalDensity.current
     val waveLengthPx = with(density) { waveLength.toPx() }
     val maxAmplitudePx = with(density) { waveAmplitude.toPx() }
@@ -62,8 +64,9 @@ fun SquigglySlider(
     val baseThumbRadiusPx = with(density) { thumbRadius.toPx() }
 
     // Phase animation: cycles while playing, rests smoothly when paused
+    val animatedPhase = if (isPlaying && enabled && maxAmplitudePx > 0f) {
     val infiniteTransition = rememberInfiniteTransition(label = "SquigglyWavePhase")
-    val animatedPhase by infiniteTransition.animateFloat(
+    infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
@@ -72,6 +75,8 @@ fun SquigglySlider(
         ),
         label = "WavePhase"
     )
+
+    } else remember { mutableFloatStateOf(0f) }
 
     // Amplitude transitions: gentle flattening when disabled/paused or scrubbing
     var isDragging by remember { mutableStateOf(false) }
@@ -99,7 +104,6 @@ fun SquigglySlider(
     val displayFraction = dragProgress ?: currentFraction
 
     val activeAmplitude = maxAmplitudePx * amplitudeMultiplier
-    val phase = if (isPlaying) animatedPhase else 0f
 
     val path = remember { Path() }
 
@@ -113,8 +117,8 @@ fun SquigglySlider(
                 if (enabled) {
                     setProgress { targetProgress ->
                         val targetVal = valueRange.start + targetProgress * rangeSpan
-                        onValueChange(targetVal)
-                        onValueChangeFinished?.invoke()
+                        changeValue(targetVal)
+                        finishChange?.invoke()
                         true
                     }
                 }
@@ -127,9 +131,9 @@ fun SquigglySlider(
                         val fraction = (offset.x / w).coerceIn(0f, 1f)
                         dragProgress = fraction
                         val targetVal = valueRange.start + fraction * rangeSpan
-                        onValueChange(targetVal)
+                        changeValue(targetVal)
                         tryAwaitRelease()
-                        onValueChangeFinished?.invoke()
+                        finishChange?.invoke()
                         dragProgress = null
                     }
                 )
@@ -143,11 +147,11 @@ fun SquigglySlider(
                         val fraction = (offset.x / w).coerceIn(0f, 1f)
                         dragProgress = fraction
                         val targetVal = valueRange.start + fraction * rangeSpan
-                        onValueChange(targetVal)
+                        changeValue(targetVal)
                     },
                     onDragEnd = {
                         isDragging = false
-                        onValueChangeFinished?.invoke()
+                        finishChange?.invoke()
                         dragProgress = null
                     },
                     onDragCancel = {
@@ -160,7 +164,7 @@ fun SquigglySlider(
                         val fraction = (change.position.x / w).coerceIn(0f, 1f)
                         dragProgress = fraction
                         val targetVal = valueRange.start + fraction * rangeSpan
-                        onValueChange(targetVal)
+                        changeValue(targetVal)
                     }
                 )
             },
@@ -175,7 +179,11 @@ fun SquigglySlider(
             path.reset()
 
             // 1. Draw Active Squiggly Track (0 to thumbX)
-            if (thumbX > 0f) {
+            if (thumbX > 0f && maxAmplitudePx == 0f) {
+                drawLine(activeTrackColor, Offset(0f, centerY), Offset(thumbX, centerY),
+                    strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
+            } else if (thumbX > 0f) {
+                val phase = animatedPhase.value
                 path.moveTo(0f, centerY)
 
                 val step = 3f // Fine step size for high quality curve

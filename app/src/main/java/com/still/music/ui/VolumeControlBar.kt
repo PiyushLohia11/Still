@@ -97,6 +97,7 @@ fun VolumeControlBar(
     fun setVolume(value: Int) {
         try {
             val clamped = value.coerceIn(0, maximum)
+            if (clamped == volume) return
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, clamped, 0)
             volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
             if (volume > 0) lastAudible = volume

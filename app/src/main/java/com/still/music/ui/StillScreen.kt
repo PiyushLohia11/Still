@@ -77,6 +77,7 @@ import kotlin.random.Random
     val search by vm.search.collectAsStateWithLifecycle()
     val player by vm.playback.collectAsStateWithLifecycle()
     val favourites by vm.favourites.collectAsStateWithLifecycle()
+    val favouriteIds = remember(favourites) { favourites.mapTo(hashSetOf(), Track::id) }
     val recents by vm.recents.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
     val playlistTracks by vm.playlistTracks.collectAsStateWithLifecycle()
@@ -180,7 +181,7 @@ import kotlin.random.Random
                     if (!search.loading && search.query.isNotBlank() && search.tracks.isEmpty() && search.error == null)
                         item { EmptyState("No tracks found", "Try another song title or artist.", Icons.Default.MusicNote) }
                     items(search.tracks, key = Track::id) { track ->
-                        TrackRow(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
+                        TrackRow(track, (track.id in favouriteIds), player.current?.id == track.id,
                             onPlay = { focusManager.clearFocus(); vm.play(track, search.tracks) }, onFavourite = { vm.favourite(track) },
                             onQueue = { vm.enqueue(track) }, onPlaylist = { addTrack = track }, onDownload = { vm.download(track) })
                     }
@@ -266,7 +267,7 @@ import kotlin.random.Random
                             if (libraryTab == 0) "Tap a track’s heart to save it here." else if (libraryTab == 2) "Tracks appear after playback begins." else "Add tracks using their options menu.",
                             Icons.Default.MusicNote) }
                         items(tracks, key = Track::id) { track ->
-                            TrackRow(track, favourites.any { it.id == track.id }, player.current?.id == track.id,
+                            TrackRow(track, (track.id in favouriteIds), player.current?.id == track.id,
                                 { vm.play(track, tracks) }, { vm.favourite(track) }, { vm.enqueue(track) }, { addTrack = track },
                                 onDownload = { vm.download(track) })
                         }
@@ -277,7 +278,7 @@ import kotlin.random.Random
     }
     }
     FullScreenSheet("Now playing", { nowPlaying = false }, visible = nowPlaying && player.current != null, showHeader = false, backgroundColors = playerGradient) {
-        NowPlaying(player, favourites.any { it.id == player.current?.id }, vm,
+        NowPlaying(player, (player.current?.id in favouriteIds), vm,
             onArtworkLoaded = { playerPoster = it }, onClose = { nowPlaying = false }, onQueue = { queue = true }, onPlaylist = {
                 addTrack = player.current
                 nowPlaying = false
@@ -289,7 +290,7 @@ import kotlin.random.Random
         }
     }
     if (queue) FullScreenSheet("Queue", { queue = false }, showHeader = false, backgroundColors = playerGradient) {
-        QueuePlayer(player, favourites.any { it.id == player.current?.id }, vm,
+        QueuePlayer(player, (player.current?.id in favouriteIds), vm,
             onClose = { queue = false }, onArtworkLoaded = { playerPoster = it })
     }
     if (importing) AlertDialog(onDismissRequest = { importing = false }, title = { Text("Import Playlist") },
@@ -413,18 +414,7 @@ import kotlin.random.Random
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
-                SquigglySlider(value = dragging ?: state.position.toFloat().coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
-                    onValueChange = { dragging = it },
-                    onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
-                    valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(), enabled = state.connected && state.duration > 0,
-                    waveAmplitude = 0.dp, thumbRadius = 0.dp, trackStrokeWidth = 5.dp,
-                    activeTrackColor = Color.White.copy(alpha = 0.55f), formatTime = ::duration)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(playerTime(dragging?.toLong() ?: state.position), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
-                    Text("−" + playerTime((state.duration - (dragging?.toLong() ?: state.position)).coerceAtLeast(0)),
-                        style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
-                }
+                PlaybackProgress(track.id, state.duration, state.connected, vm)
                 Transport(state, vm)
                 VolumeControlBar(onError = { vm.message.value = it }, compact = true)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -436,7 +426,7 @@ import kotlin.random.Random
                 }
                 if (state.buffering) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.error?.let { ErrorState(it, vm::toggle) }
-                if (lyricsOpen) LyricsPanel(track, state.position, vm)
+                if (lyricsOpen) PlayingLyrics(track, vm)
                 Spacer(Modifier.height(12.dp))
             }
         }
@@ -444,6 +434,29 @@ import kotlin.random.Random
     if (equalizerOpen) FullScreenSheet("Equalizer", { equalizerOpen = false }) {
         EqualizerPanel(vm.equalizer, onClose = { equalizerOpen = false })
     }
+}
+
+@Composable internal fun PlaybackProgress(trackId: String, durationMs: Long, connected: Boolean, vm: StillViewModel) {
+    val position by vm.playbackPosition.collectAsStateWithLifecycle()
+    Column {
+        var dragging by remember(trackId) { mutableStateOf<Float?>(null) }
+        SquigglySlider(value = dragging ?: position.toFloat().coerceIn(0f, durationMs.coerceAtLeast(1).toFloat()),
+            onValueChange = { dragging = it },
+            onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
+            valueRange = 0f..durationMs.coerceAtLeast(1).toFloat(), enabled = connected && durationMs > 0,
+            waveAmplitude = 0.dp, thumbRadius = 0.dp, trackStrokeWidth = 5.dp,
+            activeTrackColor = Color.White.copy(alpha = 0.55f), formatTime = ::duration)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(playerTime(dragging?.toLong() ?: position), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+            Text("−" + playerTime((durationMs - (dragging?.toLong() ?: position)).coerceAtLeast(0)),
+                style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+        }
+    }
+}
+
+@Composable private fun PlayingLyrics(track: Track, vm: StillViewModel) {
+    val position by vm.playbackPosition.collectAsStateWithLifecycle()
+    LyricsPanel(track, position, vm)
 }
 
 private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((ms.coerceAtLeast(0) / 1000) % 60).toString().padStart(2, '0')}"
@@ -523,8 +536,9 @@ private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((m
     val rhythms = remember(barCount) {
         List(barCount) { Random.nextInt(350, 850) to Random.nextDouble(0.55, 1.0).toFloat() }
     }
+    val levels = if (isPlaying) {
     val transition = rememberInfiniteTransition(label = "Visualizer rhythm")
-    val levels = rhythms.mapIndexed { index, (duration, peak) ->
+    rhythms.mapIndexed { index, (duration, peak) ->
         transition.animateFloat(
             initialValue = 0.1f,
             targetValue = peak,
@@ -534,6 +548,7 @@ private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((m
                 initialStartOffset = StartOffset(index * 137, StartOffsetType.FastForward)),
             label = "Visualizer bar $index")
     }
+    } else emptyList()
     val activity = animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0f,
         animationSpec = tween(350, easing = FastOutSlowInEasing),
@@ -543,9 +558,9 @@ private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((m
         val barWidth = size.width / (barCount * 2 - 1)
         val baseline = minOf(4.dp.toPx(), size.height)
         val amount = activity.value
-        levels.forEachIndexed { index, level ->
+        repeat(barCount) { index ->
             val height = baseline + (size.height - baseline) *
-                if (amount > 0f) level.value * amount else 0f
+                (levels.getOrNull(index)?.value ?: 0f) * amount
             drawRoundRect(
                 color = color,
                 topLeft = Offset(index * barWidth * 2f, size.height - height),
