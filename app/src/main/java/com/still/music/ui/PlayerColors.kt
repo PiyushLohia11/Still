@@ -21,9 +21,9 @@ internal fun rememberPlayerGradient(image: Image?): List<Color> {
             Color(posterColor(pixels))
         }
     }
-    val top by animateColorAsState(shade(base, 0.52f), tween(800), label = "Poster gradient top")
-    val middle by animateColorAsState(shade(base, 0.32f), tween(800), label = "Poster gradient middle")
-    val bottom by animateColorAsState(shade(base, 0.12f), tween(800), label = "Poster gradient bottom")
+    val top by animateColorAsState(shade(base, 0.72f), tween(800), label = "Poster gradient top")
+    val middle by animateColorAsState(shade(base, 0.42f), tween(800), label = "Poster gradient middle")
+    val bottom by animateColorAsState(shade(base, 0.24f), tween(800), label = "Poster gradient bottom")
     return listOf(top, middle, bottom)
 }
 

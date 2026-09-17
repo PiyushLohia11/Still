@@ -55,7 +55,8 @@ import kotlin.math.roundToInt
 @Composable
 fun VolumeControlBar(
     onError: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     val context = LocalContext.current
     val audio = remember(context) { context.getSystemService(AudioManager::class.java) }
@@ -109,6 +110,22 @@ fun VolumeControlBar(
         animationSpec = tween(150, easing = FastOutSlowInEasing),
         label = "VolumeFillFraction"
     )
+
+    if (compact) {
+        Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { setVolume(if (volume > 0) 0 else lastAudible.coerceIn(1, maximum)) }, enabled = enabled) {
+                Icon(if (volume == 0) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeDown,
+                    if (volume == 0) "Unmute music" else "Mute music", Modifier.size(18.dp), tint = Color.White.copy(alpha = 0.5f))
+            }
+            SquigglySlider(value = volume.toFloat(), onValueChange = { setVolume(it.roundToInt()) },
+                modifier = Modifier.weight(1f), accessibilityLabel = "Media volume",
+                valueRange = 0f..maximum.toFloat(), enabled = enabled, waveAmplitude = 0.dp, thumbRadius = 0.dp,
+                trackStrokeWidth = 4.dp, activeTrackColor = Color.White.copy(alpha = 0.5f),
+                inactiveTrackColor = Color.White.copy(alpha = 0.2f))
+            Icon(Icons.AutoMirrored.Filled.VolumeUp, null, Modifier.padding(start = 12.dp).size(20.dp), tint = Color.White.copy(alpha = 0.5f))
+        }
+        return
+    }
 
     Surface(
         modifier = modifier

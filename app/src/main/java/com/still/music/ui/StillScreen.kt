@@ -283,29 +283,9 @@ import kotlin.random.Random
             }
         }
     }
-    if (queue) FullScreenSheet("Queue", { queue = false }, backgroundColors = listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.95f))) {
-        Text(if (player.shuffle) "Shuffle is on. This list shows your editable queue order." else "Plays from top to bottom.",
-            Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 24.dp)) {
-            if (player.queue.isEmpty()) item { EmptyState("The queue is empty", "Choose a track from search or your library.", Icons.AutoMirrored.Filled.QueueMusic) }
-            itemsIndexed(player.queue) { index, track ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    Row(Modifier.fillMaxWidth().clickable { vm.jump(index) }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (index == player.index) "•" else "${index + 1}", Modifier.width(32.dp), color = MaterialTheme.colorScheme.primary)
-                        Column(Modifier.weight(1f)) {
-                            Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(track.artist, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Row(Modifier.align(Alignment.End)) {
-                        Action(Icons.Default.ArrowUpward, "Move ${track.title} up", index > 0) { vm.move(index, index - 1) }
-                        Action(Icons.Default.ArrowDownward, "Move ${track.title} down", index < player.queue.lastIndex) { vm.move(index, index + 1) }
-                        Action(Icons.Default.Close, "Remove ${track.title} from queue") { vm.remove(index) }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-                }
-            }
-        }
+    if (queue) FullScreenSheet("Queue", { queue = false }, showHeader = false, backgroundColors = playerGradient) {
+        QueuePlayer(player, favourites.any { it.id == player.current?.id }, vm,
+            onClose = { queue = false }, onArtworkLoaded = { playerPoster = it })
     }
     if (importing) AlertDialog(onDismissRequest = { importing = false }, title = { Text("Import Playlist") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -365,94 +345,167 @@ import kotlin.random.Random
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Cancel") } })
     }
 }
+@Composable private fun PlayerHandle(description: String, onClose: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(36.dp).clickable(role = Role.Button,
+        onClickLabel = description, onClick = onClose).semantics { contentDescription = description },
+        contentAlignment = Alignment.Center) {
+        Box(Modifier.size(32.dp, 4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f)))
+    }
+}
+
+@Composable private fun Transport(state: PlaybackState, vm: StillViewModel) {
+    Row(Modifier.fillMaxWidth().height(88.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically) {
+        Action(Icons.Default.SkipPrevious, "Previous track", enabled = state.connected,
+            size = 64.dp, iconSize = 36.dp, onClick = vm::previous)
+        PlaybackButton(state.playing, state.connected, size = 88.dp, prominent = false, onClick = vm::toggle)
+        Action(Icons.Default.SkipNext, "Next track", enabled = state.connected,
+            size = 64.dp, iconSize = 36.dp, onClick = vm::next)
+    }
+}
+
+@Composable private fun QueueModes(state: PlaybackState, vm: StillViewModel) {
+    Action(Icons.Default.Shuffle, if (state.shuffle) "Turn shuffle off" else "Turn shuffle on",
+        enabled = state.connected, tint = Color.White.copy(alpha = if (state.shuffle) 1f else 0.45f), onClick = vm::shuffle)
+    Action(if (state.repeat == 1) Icons.Default.RepeatOne else Icons.Default.Repeat,
+        "Repeat ${when (state.repeat) { 1 -> "one"; 2 -> "all"; else -> "off" }}. Change repeat mode",
+        enabled = state.connected, tint = Color.White.copy(alpha = if (state.repeat != 0) 1f else 0.45f), onClick = vm::repeat)
+}
+
 @Composable private fun NowPlaying(state: PlaybackState, favourite: Boolean, vm: StillViewModel,
     onQueue: () -> Unit, onPlaylist: () -> Unit, onClose: () -> Unit, onArtworkLoaded: (Image?) -> Unit) {
     val track = state.current ?: return
     var menu by remember(track.id) { mutableStateOf(false) }
-    var volumeOpen by rememberSaveable { mutableStateOf(false) }
     var equalizerOpen by rememberSaveable { mutableStateOf(false) }
+    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
+    var poster by remember(track.id) { mutableStateOf<Image?>(null) }
+    val colors = rememberPlayerGradient(poster)
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    val topBarHeight = 64.dp
-    val controlsHeight = 200.dp
-    val textHeight = 90.dp
-    val artSize = minOf(maxWidth - 64.dp, 400.dp, maxHeight - topBarHeight - controlsHeight - textHeight - 32.dp).coerceAtLeast(120.dp)
-    val spacing = ((maxHeight - artSize - topBarHeight - controlsHeight - textHeight) / 4).coerceAtLeast(16.dp)
+        val artHeight = minOf(maxWidth * 1.12f, maxHeight * 0.55f).coerceAtLeast(180.dp)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().height(artHeight)) {
+                Artwork(track, Modifier.fillMaxSize().swipeTracks(track.id, state.connected, vm::previousTrack, vm::next),
+                    cornerRadius = 0.dp, highQuality = true, onLoaded = { poster = it; onArtworkLoaded(it) })
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.12f), 0.5f to Color.Transparent, 1f to colors[1])))
+                PlayerHandle("Close Now playing", onClose)
+            }
+            Column(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(colors[1], colors[2])))
+                .padding(horizontal = 28.dp)) {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(track.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(track.artist, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.55f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box {
+                        Action(Icons.Default.MoreHoriz, "Options for ${track.title}", onClick = { menu = true })
+                        DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
+                            DropdownMenuItem(text = { Text("Equalizer") }, onClick = { menu = false; equalizerOpen = true })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
+                SquigglySlider(value = dragging ?: state.position.toFloat().coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
+                    onValueChange = { dragging = it },
+                    onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
+                    valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(), enabled = state.connected && state.duration > 0,
+                    waveAmplitude = 0.dp, thumbRadius = 0.dp, trackStrokeWidth = 5.dp,
+                    activeTrackColor = Color.White.copy(alpha = 0.55f), formatTime = ::duration)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(playerTime(dragging?.toLong() ?: state.position), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                    Text("?" + playerTime((state.duration - (dragging?.toLong() ?: state.position)).coerceAtLeast(0)),
+                        style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                }
+                Transport(state, vm)
+                VolumeControlBar(onError = { vm.message.value = it }, compact = true)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        if (favourite) "Remove from favourites" else "Add to favourites", onClick = { vm.favourite(track) })
+                    Action(Icons.AutoMirrored.Filled.Subject, "Lyrics", onClick = { lyricsOpen = !lyricsOpen })
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { DownloadButton(track, vm) }
+                    Action(Icons.AutoMirrored.Filled.QueueMusic, "Queue", onClick = onQueue)
+                }
+                if (state.buffering) LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.error?.let { ErrorState(it, vm::toggle) }
+                if (lyricsOpen) LyricsPanel(track, state.position, vm)
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+    if (equalizerOpen) FullScreenSheet("Equalizer", { equalizerOpen = false }) {
+        EqualizerPanel(vm.equalizer, onClose = { equalizerOpen = false })
+    }
+}
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(Modifier.fillMaxWidth().height(topBarHeight), verticalAlignment = Alignment.CenterVertically) {
-            Action(Icons.Default.KeyboardArrowDown, "Close Now playing", onClick = onClose)
-            Spacer(Modifier.weight(1f))
-            Action(Icons.AutoMirrored.Filled.VolumeUp, "Music volume", onClick = { volumeOpen = !volumeOpen })
-            AnimatedVisualizerBar(state.playing && state.connected && !state.buffering && state.error == null,
-                Modifier.size(40.dp).padding(10.dp))
-            Box {
-                Action(Icons.Default.MoreVert, "Options for ${track.title}", onClick = { menu = true })
-                DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; onPlaylist() })
-                    DropdownMenuItem(text = { Text("Equalizer") }, onClick = { menu = false; equalizerOpen = true })
+private fun playerTime(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${((ms.coerceAtLeast(0) / 1000) % 60).toString().padStart(2, '0')}"
+
+@Composable private fun ColumnScope.QueuePlayer(state: PlaybackState, favourite: Boolean, vm: StillViewModel,
+    onClose: () -> Unit, onArtworkLoaded: (Image?) -> Unit) {
+    PlayerHandle("Close Queue", onClose)
+    state.current?.let { track ->
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Artwork(track, Modifier.size(52.dp).clickable(onClick = onClose), cornerRadius = 6.dp,
+                highQuality = true, onLoaded = onArtworkLoaded)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f))
+            }
+            Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                if (favourite) "Remove from favourites" else "Add to favourites", onClick = { vm.favourite(track) })
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Playing Next", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(if (state.shuffle) "Shuffle on ? Editable queue order" else "${state.queue.size} tracks",
+                style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+        }
+        QueueModes(state, vm)
+    }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(state.index) { if (state.queue.isNotEmpty()) listState.animateScrollToItem(state.index.coerceIn(0, state.queue.lastIndex)) }
+    LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)) {
+        if (state.queue.isEmpty()) item { Text("The queue is empty", Modifier.padding(vertical = 24.dp)) }
+        itemsIndexed(state.queue) { index, track ->
+            var menu by remember(index, track.id) { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                .background(if (index == state.index) Color.White.copy(alpha = 0.08f) else Color.Transparent)
+                .clickable(onClickLabel = "Play ${track.title}") { vm.jump(index) }.padding(vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Artwork(track, Modifier.size(44.dp), cornerRadius = 4.dp)
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                    Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                }
+                if (index == state.index) AnimatedVisualizerBar(state.playing, Modifier.size(16.dp))
+                Box {
+                    Action(Icons.Default.MoreHoriz, "Queue options for ${track.title}", tint = Color.White.copy(alpha = 0.4f), onClick = { menu = true })
+                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Move up") }, enabled = index > 0,
+                            onClick = { menu = false; vm.move(index, index - 1) })
+                        DropdownMenuItem(text = { Text("Move down") }, enabled = index < state.queue.lastIndex,
+                            onClick = { menu = false; vm.move(index, index + 1) })
+                        DropdownMenuItem(text = { Text("Remove from queue") }, onClick = { menu = false; vm.remove(index) })
+                    }
                 }
             }
         }
-        AnimatedVisibility(volumeOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            VolumeControlBar(onError = { vm.message.value = it })
-        }
-        Spacer(Modifier.height(spacing))
-        Artwork(track, Modifier.size(artSize).swipeTracks(track.id, state.connected, vm::previousTrack, vm::next).shadow(16.dp, RoundedCornerShape(32.dp)), cornerRadius = 32.dp, highQuality = true, onLoaded = onArtworkLoaded)
-        Spacer(Modifier.height(spacing))
-        Text(track.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
-            maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Text(track.artist, style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp))
-        Spacer(Modifier.height(spacing))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Action(Icons.AutoMirrored.Filled.QueueMusic, "Queue", onClick = onQueue)
-            Action(if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                if (favourite) "Remove from favourites" else "Add to favourites",
-                tint = if (favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                onClick = { vm.favourite(track) })
-            Column(horizontalAlignment = Alignment.CenterHorizontally) { DownloadButton(track, vm) }
-        }
-        Spacer(Modifier.height(8.dp))
-        var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
-        val smoothPosition by animateFloatAsState(state.position.toFloat(),
-            animationSpec = tween(if (state.playing && dragging == null) 450 else 0, easing = LinearEasing),
-            label = "Playback position")
-        SquigglySlider(
-            value = dragging ?: smoothPosition.coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
-            onValueChange = { dragging = it },
-            onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null },
-            valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(),
-            isPlaying = state.playing && state.connected && !state.buffering && state.error == null,
-            enabled = state.duration > 0,
-            activeTrackColor = Color.White,
-            inactiveTrackColor = Color.White.copy(alpha = 0.28f),
-            thumbColor = Color.White,
-            formatTime = ::duration
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Crossfade(duration(dragging?.toLong() ?: state.position), animationSpec = tween(120), label = "Elapsed time") {
-                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(duration(state.duration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            Action(Icons.Default.Shuffle, if (state.shuffle) "Turn shuffle off" else "Turn shuffle on", tint = if (state.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = vm::shuffle)
-            Action(Icons.Default.SkipPrevious, "Previous track", size = 64.dp, iconSize = 40.dp, onClick = vm::previous)
-            PlaybackButton(state.playing, state.connected, size = 80.dp, prominent = true, onClick = vm::toggle)
-            Action(Icons.Default.SkipNext, "Next track", size = 64.dp, iconSize = 40.dp, onClick = vm::next)
-            Action(if (state.repeat == 1) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                "Repeat ${when (state.repeat) { 1 -> "one"; 2 -> "all"; else -> "off" }}. Change repeat mode",
-                tint = if (state.repeat != 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = vm::repeat)
-        }
-        if (state.buffering) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Connecting to music…", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall) }
-        state.error?.let { ErrorState(it, vm::toggle) }
-        LyricsPanel(track, state.position, vm)
-        Spacer(Modifier.height(16.dp))
     }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
+        Transport(state, vm)
+        VolumeControlBar(onError = { vm.message.value = it }, compact = true)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Action(Icons.AutoMirrored.Filled.QueueMusic, "Close Queue", onClick = onClose)
+        }
     }
 }
+
 @Composable fun AnimatedVisualizerBar(isPlaying: Boolean, modifier: Modifier = Modifier) {
     VisualizerBars(isPlaying, modifier, barCount = 5)
 }

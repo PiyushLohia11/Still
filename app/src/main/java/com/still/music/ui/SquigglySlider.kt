@@ -52,7 +52,8 @@ fun SquigglySlider(
     waveAmplitude: Dp = 4.5.dp,
     trackStrokeWidth: Dp = 3.5.dp,
     thumbRadius: Dp = 8.dp,
-    formatTime: ((Long) -> String)? = null
+    formatTime: ((Long) -> String)? = null,
+    accessibilityLabel: String = "Playback position"
 ) {
     val density = LocalDensity.current
     val waveLengthPx = with(density) { waveLength.toPx() }
@@ -107,7 +108,7 @@ fun SquigglySlider(
             .fillMaxWidth()
             .height(48.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "Playback position"
+                contentDescription = accessibilityLabel
                 progressBarRangeInfo = ProgressBarRangeInfo(displayFraction, 0f..1f)
                 if (enabled) {
                     setProgress { targetProgress ->
